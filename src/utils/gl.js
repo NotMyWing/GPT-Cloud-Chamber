@@ -22,17 +22,16 @@ export function createProgram(gl, vsSrc, fsSrc, attribs = {}) {
   const prog = gl.createProgram();
   gl.attachShader(prog, vs);
   gl.attachShader(prog, fs);
+  // bind attrib locations if requested. This must happen before linking
+  // otherwise the requested locations will be ignored by WebGL.
+  for (const [name, loc] of Object.entries(attribs)) {
+    gl.bindAttribLocation(prog, loc, name);
+  }
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
     const info = gl.getProgramInfoLog(prog);
     gl.deleteProgram(prog);
     throw new Error('Program link error: ' + info);
-  }
-  // bind attrib locations if requested
-  let idx = 0;
-  for (const [name, loc] of Object.entries(attribs)) {
-    gl.bindAttribLocation(prog, loc, name);
-    idx++;
   }
   return prog;
 }
