@@ -4,6 +4,7 @@ import decayFS from './shaders/decay.fs';
 import copyFS from './shaders/copy.fs';
 import particlesVS from './shaders/particles.vs';
 import particlesFS from './shaders/particles.fs';
+import particles2dVS from './shaders/particles2d.vs';
 import linesVS from './shaders/lines.vs';
 import linesFS from './shaders/lines.fs';
 
@@ -95,6 +96,7 @@ const MAX_PARTICLES = 5000;
 const ION_RATE_BASE = 200; // events/sec scale
 const DT_MAX = 1/30;
 const BOUNDS = 20;
+const DENS_RES = 256;
 
 const canvas = document.createElement('canvas');
 document.getElementById('app').appendChild(canvas);
@@ -106,6 +108,7 @@ const decayProg = createProgram(gl, quadVS, decayFS);
 
 // --- create particle program
 const pProg = createProgram(gl, particlesVS, particlesFS);
+const p2dProg = createProgram(gl, particles2dVS, particlesFS);
 
 // --- wireframe cube program
 const lineProg = createProgram(gl, linesVS, linesFS);
@@ -145,6 +148,7 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(P), gl.STATIC_DRAW);
 
 // accumulation buffers
 let texA, texB, fboA, fboB, W=2, H=2;
+let densTexA, densTexB, densFboA, densFboB;
 function createTargets(w,h){
   texA && gl.deleteTexture(texA);
   texB && gl.deleteTexture(texB);
@@ -162,6 +166,27 @@ function clearTargets(){
   gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.bindFramebuffer(gl.FRAMEBUFFER, fboB);
   gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+  if (densFboA) clearDensityTargets();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+function createDensityTargets(){
+  densTexA && gl.deleteTexture(densTexA);
+  densTexB && gl.deleteTexture(densTexB);
+  densFboA && gl.deleteFramebuffer(densFboA);
+  densFboB && gl.deleteFramebuffer(densFboB);
+  densTexA = createTexture(gl, DENS_RES, DENS_RES);
+  densTexB = createTexture(gl, DENS_RES, DENS_RES);
+  densFboA = createFBO(gl, densTexA);
+  densFboB = createFBO(gl, densTexB);
+  clearDensityTargets();
+}
+function clearDensityTargets(){
+  gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, densFboA);
+  gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, densFboB);
+  gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
@@ -178,6 +203,7 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+createDensityTargets();
 
 // --- camera
 let camYaw = 0.6, camPitch = 0.2, camDist = 14.0;
@@ -294,9 +320,12 @@ const rSlider = document.getElementById('rRange');
 const trailSlider = document.getElementById('trailRange');
 const toggleBtn = document.getElementById('toggleBtn');
 const clearBtn = document.getElementById('clearBtn');
+const densityBtn = document.getElementById('densityBtn');
 let paused=false;
 toggleBtn.addEventListener('click',()=>{ paused=!paused; toggleBtn.textContent = paused?'Resume':'Pause'; });
 clearBtn.addEventListener('click',()=>{ clearTargets(); });
+densityBtn.addEventListener('click',()=>{ showDensity=!showDensity; densityBtn.textContent = showDensity?'Density: On':'Density: Off'; if(showDensity) clearDensityTargets(); });
+let showDensity=false;
 
 // upload arrays per frame
 let posArr = new Float32Array(MAX_PARTICLES*3);
@@ -376,6 +405,30 @@ function renderTo(targetFBO, texPrev, decay) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
+function renderDensity(targetFBO, texPrev, decay){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, targetFBO);
+  gl.viewport(0,0,DENS_RES,DENS_RES);
+
+  gl.disable(gl.BLEND);
+  gl.useProgram(decayProg);
+  bindQuadAttribs(decayProg);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texPrev);
+  gl.uniform1i(gl.getUniformLocation(decayProg, 'u_prev'), 0);
+  gl.uniform1f(gl.getUniformLocation(decayProg, 'u_decay'), decay);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.useProgram(p2dProg);
+  bindParticlesAttribs();
+  gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_bounds'), BOUNDS);
+  const n = fillGPUArrays();
+  gl.drawArrays(gl.POINTS, 0, n);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
 function present(tex){
   // draw accumulation to screen, then permanent cube overlay
   gl.disable(gl.DEPTH_TEST);
@@ -399,6 +452,19 @@ function present(tex){
   gl.uniformMatrix4fv(gl.getUniformLocation(lineProg, 'u_viewProj'), false, getViewProj());
   gl.uniform3f(gl.getUniformLocation(lineProg, 'u_color'), 0.9, 0.95, 1.0);
   gl.drawArrays(gl.LINES, 0, 24);
+
+  if (showDensity) {
+    const size = Math.floor(Math.min(W, H) * 0.3);
+    gl.viewport(10, 10, size, size);
+    gl.disable(gl.BLEND);
+    gl.useProgram(quadProg);
+    bindQuadAttribs(quadProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, densTexA);
+    gl.uniform1i(gl.getUniformLocation(quadProg, 'u_tex'), 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.viewport(0,0,W,H);
+  }
 }
 
 function bindQuadAttribs(prog){
@@ -459,10 +525,15 @@ function frame(t){
   if (!paused) step(dt);
   const decay = parseFloat(trailSlider.value);
   renderTo(fboA, texB, decay);
+  if (showDensity) renderDensity(densFboA, densTexB, decay);
   present(texA);
   // swap
   let tmpT=texA; texA=texB; texB=tmpT;
   let tmpF=fboA; fboA=fboB; fboB=tmpF;
+  if (showDensity) {
+    tmpT=densTexA; densTexA=densTexB; densTexB=tmpT;
+    tmpF=densFboA; densFboA=densFboB; densFboB=tmpF;
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
