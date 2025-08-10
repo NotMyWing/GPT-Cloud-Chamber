@@ -92,9 +92,37 @@ const M4 = {
 
 // --- simulation parameters
 const MAX_PARTICLES = 5000;
-const ION_RATE_BASE = 200; // events/sec scale
 const DT_MAX = 1/30;
 const BOUNDS = 20;
+
+// track characteristics for each isotope
+const ISOTOPES = {
+  'Ambient (α+β)': { mix:[
+    {type:'alpha', frac:0.30, speed:2.2, life:3.5, size:26, bright:1.05, qScale:1.0},
+    {type:'beta',  frac:0.70, speed:7.0, life:7.0, size:10, bright:0.65, qScale:1.0}
+  ]},
+  'Am-241 (α)': { mix:[ {type:'alpha', frac:1.0, speed:2.1, life:3.8, size:28, bright:1.15, qScale:0.8} ] },
+  'Po-210 (α)': { mix:[ {type:'alpha', frac:1.0, speed:2.0, life:3.4, size:28, bright:1.20, qScale:0.8} ] },
+  'Rn-222 (α)': { mix:[ {type:'alpha', frac:1.0, speed:2.0, life:3.2, size:26, bright:1.10, qScale:0.85} ] },
+  'Sr-90 (β−)': { mix:[ {type:'beta',  frac:1.0, speed:6.5, life:7.5, size:9,  bright:0.60, qScale:1.2} ] },
+  'Cs-137 (β−)': { mix:[ {type:'beta',  frac:1.0, speed:7.5, life:8.0, size:10, bright:0.62, qScale:1.2} ] },
+  'Co-60 (β−)': { mix:[ {type:'beta',  frac:1.0, speed:5.5, life:6.8, size:9,  bright:0.60, qScale:1.1} ] },
+  'Th-232 chain (α+β)': { mix:[
+    {type:'alpha', frac:0.60, speed:2.0, life:3.5, size:27, bright:1.10, qScale:0.85},
+    {type:'beta',  frac:0.40, speed:6.8, life:7.5, size:10, bright:0.62, qScale:1.15}
+  ]},
+  'Cosmic Muons (μ)': { cosmic:true }
+};
+
+function pickComp(mix){
+  const r = Math.random();
+  let a = 0;
+  for (const c of mix){
+    a += c.frac;
+    if (r <= a) return c;
+  }
+  return mix[mix.length-1];
+}
 
 const canvas = document.createElement('canvas');
 document.getElementById('app').appendChild(canvas);
@@ -212,20 +240,30 @@ function getViewProj() {
 }
 
 // --- particle system
-const particles = new Float32Array(MAX_PARTICLES * 12); // [x,y,z, vx,vy,vz, life, type(0/1), size, bright, active(0/1), pad]
+// [x,y,z, vx,vy,vz, life, type(0/1), size, bright, active(0/1), qScale]
+const particles = new Float32Array(MAX_PARTICLES * 12);
 let pCount = 0;
 
 function spawnEvent(worldPos){
-  const nTracks = 10 + (Math.random()*10|0);
-  for (let i=0;i<nTracks;i++){
-    const isAlpha = Math.random()<0.25;
-    const speed = isAlpha ? 2.0 : 6.0;
-    const life = isAlpha ? 3.0 : 6.0;
-    const size = isAlpha ? 24.0 : 9.0;
-    const bright = isAlpha ? 0.9 : 0.55;
-    const dir = randDir3();
-    emitParticle(worldPos[0], worldPos[1], worldPos[2], dir[0]*speed, dir[1]*speed, dir[2]*speed, life, isAlpha?1:0, size, bright);
+  const isoName = isoSelect.value;
+  const iso = ISOTOPES[isoName] || ISOTOPES['Ambient (α+β)'];
+  if (iso.cosmic){
+    const range = BOUNDS - 2;
+    const x = (Math.random()*2-1)*range;
+    const z = (Math.random()*2-1)*range;
+    const y = BOUNDS + 2;
+    const dir = [ (Math.random()*0.1)-0.05, -1, (Math.random()*0.1)-0.05 ];
+    const speed = 30.0;
+    const life = 50.0;
+    emitParticle(x, y, z, dir[0]*speed, dir[1]*speed, dir[2]*speed, life, 0, 8, 0.5, 0.05);
+    return;
   }
+  const c = pickComp(iso.mix);
+  const d = randDir3();
+  const speed = c.speed*(0.85+0.3*Math.random());
+  const life = c.life*(0.9+0.3*Math.random());
+  const type = c.type==='alpha'?1:0;
+  emitParticle(worldPos[0], worldPos[1], worldPos[2], d[0]*speed, d[1]*speed, d[2]*speed, life, type, c.size, c.bright, c.qScale);
 }
 
 function randDir3(){
@@ -235,7 +273,7 @@ function randDir3(){
   return [r*Math.cos(t), r*Math.sin(t), z];
 }
 
-function emitParticle(x,y,z,vx,vy,vz,life,type,size,bright){
+function emitParticle(x,y,z,vx,vy,vz,life,type,size,bright,qScale){
   let idx=-1;
   for (let i=0;i<pCount;i++){
     if (particles[i*12+10]===0){ idx=i; break; }
@@ -250,6 +288,7 @@ function emitParticle(x,y,z,vx,vy,vz,life,type,size,bright){
   particles[o+6]=life; particles[o+7]=type;
   particles[o+8]=size; particles[o+9]=bright;
   particles[o+10]=1; // active
+  particles[o+11]=qScale || 1.0;
 }
 
 function worldFromScreen(x,y){
@@ -292,8 +331,22 @@ const bSlider = document.getElementById('bRange');
 const vSlider = document.getElementById('vRange');
 const rSlider = document.getElementById('rRange');
 const trailSlider = document.getElementById('trailRange');
+const isoSelect = document.getElementById('isoSelect');
 const toggleBtn = document.getElementById('toggleBtn');
 const clearBtn = document.getElementById('clearBtn');
+
+const isoActivities = {};
+for (const opt of isoSelect.options){
+  isoActivities[opt.value] = parseFloat(rSlider.value);
+}
+isoActivities['Cosmic Muons (μ)'] = 5;
+isoSelect.addEventListener('change', ()=>{
+  rSlider.value = isoActivities[isoSelect.value] || 0;
+});
+rSlider.addEventListener('input', ()=>{
+  isoActivities[isoSelect.value] = parseFloat(rSlider.value);
+});
+
 let paused=false;
 toggleBtn.addEventListener('click',()=>{ paused=!paused; toggleBtn.textContent = paused?'Resume':'Pause'; });
 clearBtn.addEventListener('click',()=>{ clearTargets(); });
@@ -307,15 +360,20 @@ let typeArr = new Float32Array(MAX_PARTICLES);
 function step(dt){
   const B = parseFloat(bSlider.value);
   const vapor = parseFloat(vSlider.value);
-  const ionRate = parseFloat(rSlider.value);
+  const activity = parseFloat(rSlider.value);
 
-  const expected = ION_RATE_BASE * ionRate * dt;
+  const expected = activity * dt;
   let births = Math.floor(expected);
   if (Math.random() < (expected-births)) births++;
+  const isoName = isoSelect.value;
   for (let i=0;i<births;i++){
-    const margin=2.0; const range=BOUNDS - margin;
-    const pos=[(Math.random()*2-1)*range, (Math.random()*2-1)*range, (Math.random()*2-1)*range];
-    spawnEvent(pos);
+    if (isoName === 'Cosmic Muons (μ)'){
+      spawnEvent(null);
+    } else {
+      const margin=2.0; const range=BOUNDS - margin;
+      const pos=[(Math.random()*2-1)*range, (Math.random()*2-1)*range, (Math.random()*2-1)*range];
+      spawnEvent(pos);
+    }
   }
 
   const dragBase = 0.3 + vapor*0.8;
@@ -327,8 +385,10 @@ function step(dt){
     let vx=particles[o+3], vy=particles[o+4], vz=particles[o+5];
     let life=particles[o+6];
     const type=particles[o+7];
-    const q = (type? 0.6 : 1.0);
-    const Bvec = [0, parseFloat(bSlider.value), 0];
+    const qScale = particles[o+11] || 1.0;
+    const qBase = (type? 0.6 : 1.0);
+    const q = qBase * qScale;
+    const Bvec = [0, B, 0];
     const ax = q * (vy*Bvec[2] - vz*Bvec[1]);
     const ay = q * (vz*Bvec[0] - vx*Bvec[2]);
     const az = q * (vx*Bvec[1] - vy*Bvec[0]);
