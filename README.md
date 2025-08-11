@@ -1,6 +1,6 @@
 # WebGL Cloud Chamber (3D, Webpack)
 
-A minimal single-page WebGL simulation of a cloud chamber. Tracks are rendered as glowing points with an accumulation buffer to create fading trails. Curvature depends on a user-controlled magnetic field; track thickness and brightness depend on the "vapor" setting. Click to inject an ionization event; drag to orbit the camera; scroll to zoom.
+A minimal single-page WebGL simulation of a cloud chamber. Tracks are rendered with an accumulation buffer that diffuses and blurs to create cloudy, vapor-like trails. Curvature depends on a user-controlled magnetic field; track thickness and brightness depend on the "vapor" setting. Click to inject an ionization event; drag to orbit the camera; scroll to zoom.
 
 ## Run (dev)
 
