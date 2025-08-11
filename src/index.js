@@ -19,10 +19,10 @@ import { M4 } from './utils/m4';
 // --- simulation parameters
 // With GPU transform feedback we can support tens of thousands of particles
 // without touching them on the CPU each frame.
-let MAX_PARTICLES = 50000;
+let MAX_PARTICLES = 30000;
 const DT_MAX = 1 / 30;
 const BOUNDS = 20;
-const DENS_RES = 256;
+const DENS_RES = 128;
 
 // track characteristics for each isotope
 const ISOTOPES = {
@@ -162,26 +162,21 @@ const EV = [
 gl.bindBuffer(gl.ARRAY_BUFFER, edgeVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(EV), gl.STATIC_DRAW);
 
-// vapor particles
-const VAPOR_COUNT = 600;
+// vapor volume slices
+const VAPOR_SLICES = 32;
 const vaporVBO = gl.createBuffer();
-const vaporPos = new Float32Array(VAPOR_COUNT * 3);
-const vaporPhase = new Float32Array(VAPOR_COUNT * 2);
-const vaporPhaseVBO = gl.createBuffer();
-function initVapor() {
-  for (let i = 0; i < VAPOR_COUNT; i++) {
-    vaporPos[3*i] = (Math.random()*2-1) * BOUNDS;
-    vaporPos[3*i+1] = (Math.random()*2-1) * BOUNDS;
-    vaporPos[3*i+2] = (Math.random()*2-1) * BOUNDS;
-    vaporPhase[2*i] = Math.random()*Math.PI*2;
-    vaporPhase[2*i+1] = Math.random()*Math.PI*2;
+(function initVapor() {
+  const verts = [];
+  for (let i = 0; i < VAPOR_SLICES; i++) {
+    const z = -BOUNDS + (2 * BOUNDS) * (i / (VAPOR_SLICES - 1));
+    verts.push(
+      -b, -b, z,  b, -b, z,  b,  b, z,
+      -b, -b, z,  b,  b, z, -b,  b, z
+    );
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
-  gl.bufferData(gl.ARRAY_BUFFER, vaporPos, gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, vaporPhaseVBO);
-  gl.bufferData(gl.ARRAY_BUFFER, vaporPhase, gl.STATIC_DRAW);
-}
-initVapor();
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+})();
 
 // accumulation buffers
 let texA, texB, fboA, fboB, W = 2, H = 2, DPR = 1;
@@ -683,9 +678,8 @@ function present(tex, t) {
   gl.useProgram(vaporProg);
   bindVaporAttribs(vaporProg);
   gl.uniformMatrix4fv(gl.getUniformLocation(vaporProg, 'u_viewProj'), false, getViewProj());
-  gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_size'), 20.0);
   gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_time'), t / 1000.0);
-  gl.drawArrays(gl.POINTS, 0, VAPOR_COUNT);
+  gl.drawArrays(gl.TRIANGLES, 0, VAPOR_SLICES * 6);
 
   // draw glass cube
   gl.useProgram(glassProg);
@@ -768,10 +762,6 @@ function bindVaporAttribs(prog) {
   gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
   gl.enableVertexAttribArray(locPos);
   gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
-  const locPhase = gl.getAttribLocation(prog, 'a_phase');
-  gl.bindBuffer(gl.ARRAY_BUFFER, vaporPhaseVBO);
-  gl.enableVertexAttribArray(locPhase);
-  gl.vertexAttribPointer(locPhase, 2, gl.FLOAT, false, 0, 0);
 }
 
 function bindEdgeAttribs(prog) {
@@ -781,29 +771,12 @@ function bindEdgeAttribs(prog) {
   gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
 }
 
-function updateVapor(dt, t) {
-  const time = t / 1000;
-  for (let i = 0; i < VAPOR_COUNT; i++) {
-    vaporPos[3*i] += Math.sin(time * 0.3 + vaporPhase[2*i]) * 0.3 * dt;
-    vaporPos[3*i+1] += (0.05 + Math.sin(time * 0.5 + vaporPhase[2*i+1]) * 0.05) * dt;
-    vaporPos[3*i+2] += Math.cos(time * 0.32 + vaporPhase[2*i+1]) * 0.3 * dt;
-    if (vaporPos[3*i+1] > BOUNDS) vaporPos[3*i+1] = -BOUNDS;
-    if (vaporPos[3*i] > BOUNDS) vaporPos[3*i] = -BOUNDS;
-    if (vaporPos[3*i] < -BOUNDS) vaporPos[3*i] = BOUNDS;
-    if (vaporPos[3*i+2] > BOUNDS) vaporPos[3*i+2] = -BOUNDS;
-    if (vaporPos[3*i+2] < -BOUNDS) vaporPos[3*i+2] = BOUNDS;
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, vaporPos);
-}
-
 // main loop
 let lastT = performance.now();
 function frame(t) {
   const dt = Math.min(DT_MAX, (t - lastT) / 1000);
   lastT = t;
   if (!paused) step(dt);
-  updateVapor(dt, t);
   const decay = parseFloat(trailSlider.value);
   renderTo(fboA, texB, decay);
   if (showDensity) renderDensity(densFboA, densTexB, decay);
