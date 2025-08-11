@@ -95,47 +95,47 @@ const glassVBO = gl.createBuffer();
 const b = BOUNDS;
 const GV = [
   // front
-  -b,-b, b, 0,0,1,
-   b,-b, b, 0,0,1,
-   b, b, b, 0,0,1,
-  -b,-b, b, 0,0,1,
-   b, b, b, 0,0,1,
-  -b, b, b, 0,0,1,
+  -b, -b, b, 0, 0, 1,
+  b, -b, b, 0, 0, 1,
+  b, b, b, 0, 0, 1,
+  -b, -b, b, 0, 0, 1,
+  b, b, b, 0, 0, 1,
+  -b, b, b, 0, 0, 1,
   // back
-  -b,-b,-b, 0,0,-1,
-  -b, b,-b, 0,0,-1,
-   b, b,-b, 0,0,-1,
-  -b,-b,-b, 0,0,-1,
-   b, b,-b, 0,0,-1,
-   b,-b,-b, 0,0,-1,
+  -b, -b, -b, 0, 0, -1,
+  -b, b, -b, 0, 0, -1,
+  b, b, -b, 0, 0, -1,
+  -b, -b, -b, 0, 0, -1,
+  b, b, -b, 0, 0, -1,
+  b, -b, -b, 0, 0, -1,
   // left
-  -b,-b,-b, -1,0,0,
-  -b,-b, b, -1,0,0,
-  -b, b, b, -1,0,0,
-  -b,-b,-b, -1,0,0,
-  -b, b, b, -1,0,0,
-  -b, b,-b, -1,0,0,
+  -b, -b, -b, -1, 0, 0,
+  -b, -b, b, -1, 0, 0,
+  -b, b, b, -1, 0, 0,
+  -b, -b, -b, -1, 0, 0,
+  -b, b, b, -1, 0, 0,
+  -b, b, -b, -1, 0, 0,
   // right
-   b,-b,-b, 1,0,0,
-   b, b,-b, 1,0,0,
-   b, b, b, 1,0,0,
-   b,-b,-b, 1,0,0,
-   b, b, b, 1,0,0,
-   b,-b, b, 1,0,0,
+  b, -b, -b, 1, 0, 0,
+  b, b, -b, 1, 0, 0,
+  b, b, b, 1, 0, 0,
+  b, -b, -b, 1, 0, 0,
+  b, b, b, 1, 0, 0,
+  b, -b, b, 1, 0, 0,
   // top
-  -b, b,-b, 0,1,0,
-  -b, b, b, 0,1,0,
-   b, b, b, 0,1,0,
-  -b, b,-b, 0,1,0,
-   b, b, b, 0,1,0,
-   b, b,-b, 0,1,0,
+  -b, b, -b, 0, 1, 0,
+  -b, b, b, 0, 1, 0,
+  b, b, b, 0, 1, 0,
+  -b, b, -b, 0, 1, 0,
+  b, b, b, 0, 1, 0,
+  b, b, -b, 0, 1, 0,
   // bottom
-  -b,-b,-b, 0,-1,0,
-   b,-b,-b, 0,-1,0,
-   b,-b, b, 0,-1,0,
-  -b,-b,-b, 0,-1,0,
-   b,-b, b, 0,-1,0,
-  -b,-b, b, 0,-1,0
+  -b, -b, -b, 0, -1, 0,
+  b, -b, -b, 0, -1, 0,
+  b, -b, b, 0, -1, 0,
+  -b, -b, -b, 0, -1, 0,
+  b, -b, b, 0, -1, 0,
+  -b, -b, b, 0, -1, 0
 ];
 gl.bindBuffer(gl.ARRAY_BUFFER, glassVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(GV), gl.STATIC_DRAW);
@@ -144,20 +144,20 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(GV), gl.STATIC_DRAW);
 const edgeVBO = gl.createBuffer();
 const EV = [
   // bottom square
-  -b,-b,-b,  b,-b,-b,
-  b,-b,-b,  b,-b, b,
-  b,-b, b, -b,-b, b,
-  -b,-b, b, -b,-b,-b,
+  -b, -b, -b, b, -b, -b,
+  b, -b, -b, b, -b, b,
+  b, -b, b, -b, -b, b,
+  -b, -b, b, -b, -b, -b,
   // top square
-  -b, b,-b,  b, b,-b,
-  b, b,-b,  b, b, b,
+  -b, b, -b, b, b, -b,
+  b, b, -b, b, b, b,
   b, b, b, -b, b, b,
-  -b, b, b, -b, b,-b,
+  -b, b, b, -b, b, -b,
   // vertical edges
-  -b,-b,-b, -b, b,-b,
-  b,-b,-b,  b, b,-b,
-  b,-b, b,  b, b, b,
-  -b,-b, b, -b, b, b
+  -b, -b, -b, -b, b, -b,
+  b, -b, -b, b, b, -b,
+  b, -b, b, b, b, b,
+  -b, -b, b, -b, b, b
 ];
 gl.bindBuffer(gl.ARRAY_BUFFER, edgeVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(EV), gl.STATIC_DRAW);
@@ -170,8 +170,8 @@ const vaporVBO = gl.createBuffer();
   for (let i = 0; i < VAPOR_SLICES; i++) {
     const z = -BOUNDS + (2 * BOUNDS) * (i / (VAPOR_SLICES - 1));
     verts.push(
-      -b, -b, z,  b, -b, z,  b,  b, z,
-      -b, -b, z,  b,  b, z, -b,  b, z
+      -b, -b, z, b, -b, z, b, b, z,
+      -b, -b, z, b, b, z, -b, b, z
     );
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
@@ -238,7 +238,7 @@ resize();
 createDensityTargets();
 
 // --- camera
-let camYaw = 0.6, camPitch = 0.2, camDist = 14.0;
+let camYaw = 1.2, camPitch = 0.2, camDist = 64.0;
 let isDragging = false, lastX = 0, lastY = 0;
 let isPinching = false, lastPinch = 0;
 canvas.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
