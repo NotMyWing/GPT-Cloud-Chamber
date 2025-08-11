@@ -36,6 +36,6 @@ float fbm(vec3 p){
 void main(){
   vec3 p = v_pos * 0.1 + vec3(0.0, u_time * 0.02, 0.0);
   float d = fbm(p);
-  float alpha = smoothstep(0.5, 0.9, d) * 0.08;
+  float alpha = smoothstep(0.5, 0.9, d) * 0.04;
   gl_FragColor = vec4(vec3(0.9), alpha);
 }

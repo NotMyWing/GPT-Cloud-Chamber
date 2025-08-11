@@ -163,7 +163,7 @@ gl.bindBuffer(gl.ARRAY_BUFFER, edgeVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(EV), gl.STATIC_DRAW);
 
 // vapor volume slices
-const VAPOR_SLICES = 48;
+const VAPOR_SLICES = 96;
 const vaporVBO = gl.createBuffer();
 (function initVapor() {
   const verts = [];
@@ -691,7 +691,14 @@ function present(tex, t) {
   const eye = getCameraPos();
   gl.uniformMatrix4fv(gl.getUniformLocation(glassProg, 'u_viewProj'), false, getViewProj());
   gl.uniform3f(gl.getUniformLocation(glassProg, 'u_eye'), eye[0], eye[1], eye[2]);
+  gl.depthMask(false);
+  gl.enable(gl.CULL_FACE);
+  gl.cullFace(gl.FRONT);
   gl.drawArrays(gl.TRIANGLES, 0, 36);
+  gl.cullFace(gl.BACK);
+  gl.drawArrays(gl.TRIANGLES, 0, 36);
+  gl.disable(gl.CULL_FACE);
+  gl.depthMask(true);
 
   // draw edge lines on top
   gl.disable(gl.BLEND);
