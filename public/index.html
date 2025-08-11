@@ -16,22 +16,26 @@
     .spacer { flex:1; }
     .btn { pointer-events:auto; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); border-radius:10px; padding:8px 12px; cursor:pointer; user-select:none; }
     .tip { opacity:0.8; font-size:12px; }
+    .controls h2 { margin:0 0 8px; font-size:16px; }
+    .about { max-width:320px; }
+    .about a { color:#8cf; }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <div class="hud">
-    <div class="panel">
+    <div class="panel controls">
+      <h2>Simulation Settings</h2>
       <div class="row">
-        <label>B-field</label>
+        <label for="bRange">B-field</label>
         <input id="bRange" type="range" min="-2" max="2" step="0.01" value="0.6">
-        <label>Vapor</label>
+        <label for="vRange">Vapor</label>
         <input id="vRange" type="range" min="0" max="1" step="0.005" value="0.35">
-        <label>Activity</label>
+        <label for="rRange">Activity</label>
         <input id="rRange" type="range" min="0" max="400" step="1" value="160">
-        <label>Trail</label>
+        <label for="trailRange">Trail</label>
         <input id="trailRange" type="range" min="0.80" max="0.999" step="0.001" value="0.965">
-        <label>Isotope</label>
+        <label for="isoSelect">Isotope</label>
         <select id="isoSelect">
           <option>Ambient (α+β)</option>
           <option>Am-241 (α)</option>
@@ -51,6 +55,9 @@
       <div class="row tip">
         Click to inject a decay. Drag = orbit. Wheel = zoom. Isotope controls α vs β track style (stylized).
       </div>
+    </div>
+    <div class="panel about">
+      <p><strong>WebGL Cloud Chamber</strong> – a GPU particle demo built as a test of GPT-5 capabilities. Learn more about <a href="https://en.wikipedia.org/wiki/Cloud_chamber">cloud chambers</a> or browse the <a href="https://github.com/">source on GitHub</a>.</p>
     </div>
   </div>
   <script src="/bundle.js"></script>
