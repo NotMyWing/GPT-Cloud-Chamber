@@ -464,6 +464,7 @@ function renderTo(targetFBO, texPrev, decay) {
   gl.bindTexture(gl.TEXTURE_2D, texPrev);
   gl.uniform1i(gl.getUniformLocation(decayProg, 'u_prev'), 0);
   gl.uniform1f(gl.getUniformLocation(decayProg, 'u_decay'), decay);
+  gl.uniform2f(gl.getUniformLocation(decayProg, 'u_texel'), 1 / W, 1 / H);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // 2) draw particles (ADDITIVE)
@@ -488,6 +489,7 @@ function renderDensity(targetFBO, texPrev, decay) {
   gl.bindTexture(gl.TEXTURE_2D, texPrev);
   gl.uniform1i(gl.getUniformLocation(decayProg, 'u_prev'), 0);
   gl.uniform1f(gl.getUniformLocation(decayProg, 'u_decay'), decay);
+  gl.uniform2f(gl.getUniformLocation(decayProg, 'u_texel'), 1 / DENS_RES, 1 / DENS_RES);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   gl.enable(gl.BLEND);
