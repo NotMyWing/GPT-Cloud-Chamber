@@ -241,6 +241,7 @@ createDensityTargets();
 let camYaw = 1.2, camPitch = 0.2, camDist = 64.0;
 let isDragging = false, lastX = 0, lastY = 0;
 let isPinching = false, lastPinch = 0;
+let userPanned = false;
 canvas.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
 window.addEventListener('mouseup', () => isDragging = false);
 window.addEventListener('mousemove', e => {
@@ -250,6 +251,7 @@ window.addEventListener('mousemove', e => {
   camYaw += dx * 3.0;
   camPitch = Math.max(-1.2, Math.min(1.2, camPitch + dy * 3.0));
   lastX = e.clientX; lastY = e.clientY;
+  userPanned = true;
 });
 window.addEventListener('wheel', e => {
   const zoomSpeed = 100 * (1 / camDist);
@@ -294,6 +296,7 @@ window.addEventListener('touchmove', e => {
     camYaw += dx * 3.0;
     camPitch = Math.max(-1.2, Math.min(1.2, camPitch + dy * 3.0));
     lastX = t.clientX; lastY = t.clientY;
+    userPanned = true;
     e.preventDefault();
   }
 }, { passive: false });
@@ -787,6 +790,7 @@ let lastT = performance.now();
 function frame(t) {
   const dt = Math.min(DT_MAX, (t - lastT) / 1000);
   lastT = t;
+  if (!userPanned) camYaw += dt * 0.1;
   if (!paused) step(dt);
   const decay = parseFloat(trailSlider.value);
   renderTo(fboA, texB, decay);
