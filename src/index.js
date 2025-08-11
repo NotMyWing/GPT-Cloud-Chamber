@@ -705,7 +705,7 @@ function present(tex, t) {
   gl.useProgram(edgeProg);
   bindEdgeAttribs(edgeProg);
   gl.uniformMatrix4fv(gl.getUniformLocation(edgeProg, 'u_viewProj'), false, getViewProj());
-  gl.uniform3f(gl.getUniformLocation(edgeProg, 'u_color'), 0.2, 0.3, 0.35);
+  gl.uniform3f(gl.getUniformLocation(edgeProg, 'u_color'), 0.4, 0.6, 0.7);
   gl.lineWidth(3);
   gl.drawArrays(gl.LINES, 0, 24);
   gl.lineWidth(1);
