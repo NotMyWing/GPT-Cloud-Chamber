@@ -5,6 +5,7 @@ attribute float a_brightness;
 attribute float a_type;
 attribute float a_active;
 uniform float u_bounds;
+uniform float u_dpr;
 varying float v_bright;
 varying float v_type;
 void main(){
@@ -16,5 +17,5 @@ void main(){
     return;
   }
   gl_Position = vec4(a_pos.x/u_bounds, a_pos.z/u_bounds, 0.0, 1.0);
-  gl_PointSize = a_size;
+  gl_PointSize = a_size * u_dpr;
 }
