@@ -106,7 +106,7 @@ gl.bindBuffer(gl.ARRAY_BUFFER, cubeVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(P), gl.STATIC_DRAW);
 
 // accumulation buffers
-let texA, texB, fboA, fboB, W = 2, H = 2;
+let texA, texB, fboA, fboB, W = 2, H = 2, DPR = 1;
 let densTexA, densTexB, densFboA, densFboB;
 function createTargets(w, h) {
   texA && gl.deleteTexture(texA);
@@ -150,9 +150,9 @@ function clearDensityTargets() {
 }
 
 function resize() {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = Math.max(2, Math.floor(window.innerWidth * dpr));
-  const h = Math.max(2, Math.floor(window.innerHeight * dpr));
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(2, Math.floor(window.innerWidth * DPR));
+  const h = Math.max(2, Math.floor(window.innerHeight * DPR));
   if (w === W && h === H) return;
   W = w; H = h;
   canvas.width = w; canvas.height = h;
@@ -167,6 +167,7 @@ createDensityTargets();
 // --- camera
 let camYaw = 0.6, camPitch = 0.2, camDist = 14.0;
 let isDragging = false, lastX = 0, lastY = 0;
+let isPinching = false, lastPinch = 0;
 canvas.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
 window.addEventListener('mouseup', () => isDragging = false);
 window.addEventListener('mousemove', e => {
@@ -183,21 +184,43 @@ window.addEventListener('wheel', e => {
 
 // touch controls
 canvas.addEventListener('touchstart', e => {
-  isDragging = true;
-  const t = e.touches[0];
-  lastX = t.clientX; lastY = t.clientY;
-}, { passive: false });
-window.addEventListener('touchend', () => { isDragging = false; });
-window.addEventListener('touchcancel', () => { isDragging = false; });
-window.addEventListener('touchmove', e => {
-  if (!isDragging) return;
-  const t = e.touches[0];
-  const dx = (t.clientX - lastX) / window.innerWidth;
-  const dy = (t.clientY - lastY) / window.innerHeight;
-  camYaw += dx * 3.0;
-  camPitch = Math.max(-1.2, Math.min(1.2, camPitch + dy * 3.0));
-  lastX = t.clientX; lastY = t.clientY;
+  if (e.touches.length === 1) {
+    isDragging = true;
+    const t = e.touches[0];
+    lastX = t.clientX; lastY = t.clientY;
+  } else if (e.touches.length === 2) {
+    isPinching = true;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastPinch = Math.hypot(dx, dy);
+  }
   e.preventDefault();
+}, { passive: false });
+window.addEventListener('touchend', e => {
+  if (e.touches.length === 0) isDragging = false;
+  if (e.touches.length < 2) isPinching = false;
+});
+window.addEventListener('touchcancel', () => { isDragging = false; isPinching = false; });
+window.addEventListener('touchmove', e => {
+  if (isPinching && e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const delta = dist - lastPinch;
+    camDist = Math.max(4, Math.min(40, camDist - delta * 0.02));
+    lastPinch = dist;
+    e.preventDefault();
+    return;
+  }
+  if (isDragging && e.touches.length === 1) {
+    const t = e.touches[0];
+    const dx = (t.clientX - lastX) / window.innerWidth;
+    const dy = (t.clientY - lastY) / window.innerHeight;
+    camYaw += dx * 3.0;
+    camPitch = Math.max(-1.2, Math.min(1.2, camPitch + dy * 3.0));
+    lastX = t.clientX; lastY = t.clientY;
+    e.preventDefault();
+  }
 }, { passive: false });
 
 function getViewProj() {
@@ -343,6 +366,15 @@ const densityBtn = document.getElementById('densityBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 
+function updateSettingsBtn() {
+  if (settingsPanel.classList.contains('open')) {
+    const w = settingsPanel.offsetWidth;
+    settingsBtn.style.transform = `translateX(${w}px)`;
+  } else {
+    settingsBtn.style.transform = '';
+  }
+}
+
 const isoActivities = {};
 for (const opt of isoSelect.options) {
   isoActivities[opt.value] = parseFloat(rSlider.value);
@@ -359,7 +391,9 @@ let paused = false;
 toggleBtn.addEventListener('click', () => { paused = !paused; toggleBtn.textContent = paused ? 'Resume' : 'Pause'; });
 clearBtn.addEventListener('click', () => { clearTargets(); });
 densityBtn.addEventListener('click', () => { showDensity = !showDensity; densityBtn.textContent = showDensity ? 'Density: On' : 'Density: Off'; if (showDensity) clearDensityTargets(); });
-settingsBtn.addEventListener('click', () => { settingsPanel.classList.toggle('open'); });
+settingsBtn.addEventListener('click', () => { settingsPanel.classList.toggle('open'); updateSettingsBtn(); });
+window.addEventListener('resize', updateSettingsBtn);
+updateSettingsBtn();
 let showDensity = false;
 
 let step;
@@ -514,6 +548,7 @@ function renderTo(targetFBO, texPrev, decay) {
   gl.useProgram(pProg);
   bindParticlesAttribs(pProg, srcState);
   gl.uniformMatrix4fv(gl.getUniformLocation(pProg, 'u_viewProj'), false, getViewProj());
+  gl.uniform1f(gl.getUniformLocation(pProg, 'u_dpr'), DPR);
   gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -538,6 +573,7 @@ function renderDensity(targetFBO, texPrev, decay) {
   gl.useProgram(p2dProg);
   bindParticlesAttribs(p2dProg, srcState);
   gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_bounds'), BOUNDS);
+  gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_dpr'), DPR);
   gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
