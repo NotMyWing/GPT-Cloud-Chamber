@@ -1,4 +1,4 @@
-# WebGL Cloud Chamber (3D, Webpack)
+# 🔗 [WebGL Cloud Chamber (3D, Webpack)](https://notmywing.github.io/GPT-Cloud-Chamber/)
 
 A minimal single-page WebGL simulation of a cloud chamber. Tracks are rendered with an accumulation buffer that diffuses and blurs to create cloudy, vapor-like trails. Curvature depends on a user-controlled magnetic field; track thickness and brightness depend on the "vapor" setting. Click to inject an ionization event; drag to orbit the camera; scroll to zoom.
 
@@ -18,5 +18,3 @@ npm run build
 ```
 
 Then open `public/index.html` in a static server (or file URL).
-
-> Note: A prebuilt `dist/bundle.js` is included so you can open `public/index.html` immediately without building.
