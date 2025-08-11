@@ -179,7 +179,8 @@ window.addEventListener('mousemove', e => {
   lastX = e.clientX; lastY = e.clientY;
 });
 window.addEventListener('wheel', e => {
-  camDist = Math.max(4, Math.min(40, camDist + Math.sign(e.deltaY)));
+  const zoomSpeed = 100 * (1 / camDist);
+  camDist = Math.max(4, Math.min(100, camDist + Math.sign(e.deltaY) * zoomSpeed));
 });
 
 // touch controls
@@ -207,7 +208,8 @@ window.addEventListener('touchmove', e => {
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const dist = Math.hypot(dx, dy);
     const delta = dist - lastPinch;
-    camDist = Math.max(4, Math.min(40, camDist - delta * 0.02));
+    const zoomSpeed = 20 * (1 / camDist);
+    camDist = Math.max(4, Math.min(100, camDist - delta * zoomSpeed));
     lastPinch = dist;
     e.preventDefault();
     return;
