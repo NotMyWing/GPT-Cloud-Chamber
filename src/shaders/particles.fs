@@ -11,9 +11,12 @@ void main(){
   float density = exp(-2.5 * r * r);
   float n = noise(p + v_bright);
   density *= mix(0.7, 1.3, n);
-  float core = mix(0.9, 1.3, v_type);
-  float glow = mix(0.6, 1.0, v_type);
-  vec3 col = vec3(1.0) * (v_bright * core * density);
-  float alpha = density * glow;
-  gl_FragColor = vec4(col, alpha);
+  float core = mix(0.9, 1.5, v_type);
+  float glow = mix(1.0, 1.4, v_type);
+  vec3 betaCol = vec3(0.3, 0.7, 1.0);
+  vec3 alphaCol = vec3(1.0, 0.5, 0.1);
+  vec3 col = mix(betaCol, alphaCol, v_type);
+  float brightness = v_bright * core * density * 1.8;
+  float alpha = density * glow * 1.4;
+  gl_FragColor = vec4(col * brightness, alpha);
 }

@@ -358,6 +358,10 @@ function randDir3() {
 
 // Write a particle into the current source buffers at the emit pointer.
 function emitParticle(x, y, z, vx, vy, vz, life, type, size, bright, qScale) {
+  // Boost visibility so newly spawned particles appear bold and flashy.
+  size *= 1.5;
+  bright *= 2.0;
+
   const idx = emitPtr;
   emitPtr = (emitPtr + 1) % MAX_PARTICLES;
   if (isWebGL2) {
