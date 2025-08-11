@@ -1,6 +1,9 @@
+// Create a WebGL2 context. Transform feedback used for the GPU particle
+// simulation is only available in WebGL2, so we request that explicitly and
+// fail fast if the browser does not support it.
 export function createGL(canvas) {
-  const gl = canvas.getContext('webgl', { alpha: false, antialias: true, preserveDrawingBuffer: false });
-  if (!gl) throw new Error('WebGL not supported');
+  const gl = canvas.getContext('webgl2', { alpha: false, antialias: true, preserveDrawingBuffer: false });
+  if (!gl) throw new Error('WebGL2 not supported');
   return gl;
 }
 
@@ -16,7 +19,11 @@ export function createShader(gl, type, src) {
   return sh;
 }
 
-export function createProgram(gl, vsSrc, fsSrc, attribs = {}) {
+// Create a shader program and optionally configure transform feedback
+// varyings before linking. The "attribs" map allows callers to bind attribute
+// locations prior to linking, while the "feedback" array (if provided) lists
+// the varying names captured by transform feedback.
+export function createProgram(gl, vsSrc, fsSrc, attribs = {}, feedback = null) {
   const vs = createShader(gl, gl.VERTEX_SHADER, vsSrc);
   const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSrc);
   const prog = gl.createProgram();
@@ -26,6 +33,10 @@ export function createProgram(gl, vsSrc, fsSrc, attribs = {}) {
   // otherwise the requested locations will be ignored by WebGL.
   for (const [name, loc] of Object.entries(attribs)) {
     gl.bindAttribLocation(prog, loc, name);
+  }
+  // Configure transform feedback varyings if requested
+  if (feedback) {
+    gl.transformFeedbackVaryings(prog, feedback, gl.SEPARATE_ATTRIBS);
   }
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {

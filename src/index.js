@@ -7,6 +7,8 @@ import particlesFS from './shaders/particles.fs';
 import particles2dVS from './shaders/particles2d.vs';
 import linesVS from './shaders/lines.vs';
 import linesFS from './shaders/lines.fs';
+import updateVS from './shaders/update.vs';
+import updateFS from './shaders/update.fs';
 
 
 // --- math helpers (column-major, as WebGL expects)
@@ -92,7 +94,9 @@ const M4 = {
 
 
 // --- simulation parameters
-const MAX_PARTICLES = 5000;
+// With GPU transform feedback we can support tens of thousands of particles
+// without touching them on the CPU each frame.
+const MAX_PARTICLES = 50000;
 const DT_MAX = 1 / 30;
 const BOUNDS = 20;
 const DENS_RES = 256;
@@ -144,17 +148,13 @@ const p2dProg = createProgram(gl, particles2dVS, particlesFS);
 
 // --- wireframe cube program
 const lineProg = createProgram(gl, linesVS, linesFS);
+// --- particle update program (transform feedback)
+const updateProg = createProgram(gl, updateVS, updateFS, {}, ['v_state1', 'v_state2', 'v_state3']);
 
 // --- common geometry buffers
 const quadVBO = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-
-// particles buffers
-const posBuf = gl.createBuffer();
-const sizeBuf = gl.createBuffer();
-const brightBuf = gl.createBuffer();
-const typeBuf = gl.createBuffer();
 
 // cube: 12 edges (24 vertices)
 const cubeVBO = gl.createBuffer();
@@ -269,10 +269,19 @@ function getViewProj() {
   return vp;
 }
 
-// --- particle system
-// [x,y,z, vx,vy,vz, life, type(0/1), size, bright, active(0/1), qScale]
-const particles = new Float32Array(MAX_PARTICLES * 12);
-let pCount = 0;
+// --- particle system ------------------------------------------------------
+// Particle state is kept entirely on the GPU using transform feedback. Each
+// particle is represented by three vec4 buffers (position/life, velocity/type
+// and size/brightness/active/qScale) that are ping‑ponged every frame.
+const stateA = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+const stateB = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+for (const buf of [...stateA, ...stateB]) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(MAX_PARTICLES * 4), gl.DYNAMIC_COPY);
+}
+let srcState = stateA;
+let dstState = stateB;
+let emitPtr = 0;
 
 function spawnEvent(worldPos) {
   const isoName = isoSelect.value;
@@ -303,22 +312,16 @@ function randDir3() {
   return [r * Math.cos(t), r * Math.sin(t), z];
 }
 
+// Write a particle into the current source buffers at the emit pointer.
 function emitParticle(x, y, z, vx, vy, vz, life, type, size, bright, qScale) {
-  let idx = -1;
-  for (let i = 0; i < pCount; i++) {
-    if (particles[i * 12 + 10] === 0) { idx = i; break; }
-  }
-  if (idx < 0) {
-    if (pCount >= MAX_PARTICLES) return;
-    idx = pCount++;
-  }
-  const o = idx * 12;
-  particles[o + 0] = x; particles[o + 1] = y; particles[o + 2] = z;
-  particles[o + 3] = vx; particles[o + 4] = vy; particles[o + 5] = vz;
-  particles[o + 6] = life; particles[o + 7] = type;
-  particles[o + 8] = size; particles[o + 9] = bright;
-  particles[o + 10] = 1; // active
-  particles[o + 11] = qScale || 1.0;
+  const idx = emitPtr;
+  emitPtr = (emitPtr + 1) % MAX_PARTICLES;
+  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
+  gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([x, y, z, life]));
+  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
+  gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([vx, vy, vz, type]));
+  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
+  gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([size, bright, 1, qScale || 1.0]));
 }
 
 function worldFromScreen(x, y) {
@@ -384,12 +387,6 @@ clearBtn.addEventListener('click', () => { clearTargets(); });
 densityBtn.addEventListener('click', () => { showDensity = !showDensity; densityBtn.textContent = showDensity ? 'Density: On' : 'Density: Off'; if (showDensity) clearDensityTargets(); });
 let showDensity = false;
 
-// upload arrays per frame
-let posArr = new Float32Array(MAX_PARTICLES * 3);
-let sizeArr = new Float32Array(MAX_PARTICLES);
-let brightArr = new Float32Array(MAX_PARTICLES);
-let typeArr = new Float32Array(MAX_PARTICLES);
-
 function step(dt) {
   const B = parseFloat(bSlider.value);
   const vapor = parseFloat(vSlider.value);
@@ -411,36 +408,48 @@ function step(dt) {
 
   const dragBase = 0.3 + vapor * 0.8;
   const jitter = 0.3 + vapor * 1.2;
-  for (let i = 0; i < pCount; i++) {
-    const o = i * 12;
-    if (particles[o + 10] === 0) continue;
-    let x = particles[o + 0], y = particles[o + 1], z = particles[o + 2];
-    let vx = particles[o + 3], vy = particles[o + 4], vz = particles[o + 5];
-    let life = particles[o + 6];
-    const type = particles[o + 7];
-    const qScale = particles[o + 11] || 1.0;
-    const qBase = (type ? 0.6 : 1.0);
-    const q = qBase * qScale;
-    const Bvec = [0, B, 0];
-    const ax = q * (vy * Bvec[2] - vz * Bvec[1]);
-    const ay = q * (vz * Bvec[0] - vx * Bvec[2]);
-    const az = q * (vx * Bvec[1] - vy * Bvec[0]);
-    vx += ax * dt; vy += ay * dt; vz += az * dt;
-    const drag = Math.exp(-dragBase * dt);
-    vx *= drag; vy *= drag; vz *= drag;
-    vx += (Math.random() * 2 - 1) * jitter * dt;
-    vy += (Math.random() * 2 - 1) * jitter * dt * 0.5;
-    vz += (Math.random() * 2 - 1) * jitter * dt;
-    x += vx * dt; y += vy * dt; z += vz * dt;
-    life -= dt;
-    const active = (life > 0 && Math.abs(x) < BOUNDS && Math.abs(y) < BOUNDS && Math.abs(z) < BOUNDS) ? 1 : 0;
-    particles[o + 0] = x; particles[o + 1] = y; particles[o + 2] = z;
-    particles[o + 3] = vx; particles[o + 4] = vy; particles[o + 5] = vz;
-    particles[o + 6] = life; particles[o + 10] = active;
-    const baseBright = particles[o + 9];
-    particles[o + 9] = baseBright * (0.92 + vapor * 0.25) * Math.max(0.25, life * 0.15);
-    particles[o + 8] = (type ? 24 : 9) * (0.9 + vapor * 0.8);
-  }
+
+  gl.useProgram(updateProg);
+  const loc1 = gl.getAttribLocation(updateProg, 'a_state1');
+  const loc2 = gl.getAttribLocation(updateProg, 'a_state2');
+  const loc3 = gl.getAttribLocation(updateProg, 'a_state3');
+  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
+  gl.enableVertexAttribArray(loc1);
+  gl.vertexAttribPointer(loc1, 4, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
+  gl.enableVertexAttribArray(loc2);
+  gl.vertexAttribPointer(loc2, 4, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
+  gl.enableVertexAttribArray(loc3);
+  gl.vertexAttribPointer(loc3, 4, gl.FLOAT, false, 0, 0);
+
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, dstState[0]);
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, dstState[1]);
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, dstState[2]);
+
+  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dt'), dt);
+  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_bounds'), BOUNDS);
+  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dragBase'), dragBase);
+  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_jitter'), jitter);
+  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_B'), B);
+
+  gl.enable(gl.RASTERIZER_DISCARD);
+  gl.beginTransformFeedback(gl.POINTS);
+  gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
+  gl.endTransformFeedback();
+  gl.disable(gl.RASTERIZER_DISCARD);
+
+  // Unbind transform feedback buffers so they can be used for drawing or updates.
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, null);
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, null);
+
+  gl.disableVertexAttribArray(loc1);
+  gl.disableVertexAttribArray(loc2);
+  gl.disableVertexAttribArray(loc3);
+
+  // swap state buffers
+  let tmp = srcState; srcState = dstState; dstState = tmp;
 }
 
 function renderTo(targetFBO, texPrev, decay) {
@@ -461,10 +470,9 @@ function renderTo(targetFBO, texPrev, decay) {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.useProgram(pProg);
-  bindParticlesAttribs();
+  bindParticlesAttribs(pProg, srcState);
   gl.uniformMatrix4fv(gl.getUniformLocation(pProg, 'u_viewProj'), false, getViewProj());
-  const n = fillGPUArrays();
-  gl.drawArrays(gl.POINTS, 0, n);
+  gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
@@ -485,10 +493,9 @@ function renderDensity(targetFBO, texPrev, decay) {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.useProgram(p2dProg);
-  bindParticlesAttribs();
+  bindParticlesAttribs(p2dProg, srcState);
   gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_bounds'), BOUNDS);
-  const n = fillGPUArrays();
-  gl.drawArrays(gl.POINTS, 0, n);
+  gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
@@ -538,47 +545,28 @@ function bindQuadAttribs(prog) {
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 }
 
-function bindParticlesAttribs() {
-  const locPos = gl.getAttribLocation(pProg, 'a_pos');
-  const locSize = gl.getAttribLocation(pProg, 'a_size');
-  const locBright = gl.getAttribLocation(pProg, 'a_brightness');
-  const locType = gl.getAttribLocation(pProg, 'a_type');
-  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-  gl.enableVertexAttribArray(locPos);
-  gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, sizeBuf);
-  gl.enableVertexAttribArray(locSize);
-  gl.vertexAttribPointer(locSize, 1, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, brightBuf);
-  gl.enableVertexAttribArray(locBright);
-  gl.vertexAttribPointer(locBright, 1, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, typeBuf);
-  gl.enableVertexAttribArray(locType);
-  gl.vertexAttribPointer(locType, 1, gl.FLOAT, false, 0, 0);
-}
+function bindParticlesAttribs(prog, state) {
+  const locPos = gl.getAttribLocation(prog, 'a_pos');
+  const locSize = gl.getAttribLocation(prog, 'a_size');
+  const locBright = gl.getAttribLocation(prog, 'a_brightness');
+  const locType = gl.getAttribLocation(prog, 'a_type');
+  const locActive = gl.getAttribLocation(prog, 'a_active');
 
-function fillGPUArrays() {
-  let n = 0;
-  for (let i = 0; i < pCount; i++) {
-    const o = i * 12;
-    if (particles[o + 10] === 0) continue;
-    posArr[n * 3 + 0] = particles[o + 0];
-    posArr[n * 3 + 1] = particles[o + 1];
-    posArr[n * 3 + 2] = particles[o + 2];
-    sizeArr[n] = particles[o + 8];
-    brightArr[n] = particles[o + 9];
-    typeArr[n] = particles[o + 7];
-    n++;
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, posArr.subarray(0, n * 3), gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, sizeBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, sizeArr.subarray(0, n), gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, brightBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, brightArr.subarray(0, n), gl.DYNAMIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, typeBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, typeArr.subarray(0, n), gl.DYNAMIC_DRAW);
-  return n;
+  gl.bindBuffer(gl.ARRAY_BUFFER, state[0]);
+  gl.enableVertexAttribArray(locPos);
+  gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 16, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, state[1]);
+  gl.enableVertexAttribArray(locType);
+  gl.vertexAttribPointer(locType, 1, gl.FLOAT, false, 16, 12);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, state[2]);
+  gl.enableVertexAttribArray(locSize);
+  gl.vertexAttribPointer(locSize, 1, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(locBright);
+  gl.vertexAttribPointer(locBright, 1, gl.FLOAT, false, 16, 4);
+  gl.enableVertexAttribArray(locActive);
+  gl.vertexAttribPointer(locActive, 1, gl.FLOAT, false, 16, 8);
 }
 
 // main loop
