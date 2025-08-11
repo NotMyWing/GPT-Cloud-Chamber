@@ -14,6 +14,7 @@ import edgeFS from './shaders/edge.fs';
 import updateVS from './shaders/update.vs';
 import updateFS from './shaders/update.fs';
 import { M4 } from './utils/m4';
+import ISOTOPES from './isotopes.json';
 
 
 // --- simulation parameters
@@ -24,28 +25,7 @@ const DT_MAX = 1 / 30;
 const BOUNDS = 20;
 const DENS_RES = 128;
 
-// track characteristics for each isotope
-const ISOTOPES = {
-  'Ambient (α+β)': {
-    mix: [
-      { type: 'alpha', frac: 0.30, speed: 2.2, life: 3.5, size: 26, bright: 1.05, qScale: 1.0 },
-      { type: 'beta', frac: 0.70, speed: 7.0, life: 7.0, size: 10, bright: 0.65, qScale: 1.0 }
-    ]
-  },
-  'Am-241 (α)': { mix: [{ type: 'alpha', frac: 1.0, speed: 2.1, life: 3.8, size: 28, bright: 1.15, qScale: 0.8 }] },
-  'Po-210 (α)': { mix: [{ type: 'alpha', frac: 1.0, speed: 2.0, life: 3.4, size: 28, bright: 1.20, qScale: 0.8 }] },
-  'Rn-222 (α)': { mix: [{ type: 'alpha', frac: 1.0, speed: 2.0, life: 3.2, size: 26, bright: 1.10, qScale: 0.85 }] },
-  'Sr-90 (β−)': { mix: [{ type: 'beta', frac: 1.0, speed: 6.5, life: 7.5, size: 9, bright: 0.60, qScale: 1.2 }] },
-  'Cs-137 (β−)': { mix: [{ type: 'beta', frac: 1.0, speed: 7.5, life: 8.0, size: 10, bright: 0.62, qScale: 1.2 }] },
-  'Co-60 (β−)': { mix: [{ type: 'beta', frac: 1.0, speed: 5.5, life: 6.8, size: 9, bright: 0.60, qScale: 1.1 }] },
-  'Th-232 chain (α+β)': {
-    mix: [
-      { type: 'alpha', frac: 0.60, speed: 2.0, life: 3.5, size: 27, bright: 1.10, qScale: 0.85 },
-      { type: 'beta', frac: 0.40, speed: 6.8, life: 7.5, size: 10, bright: 0.62, qScale: 1.15 }
-    ]
-  },
-  'Cosmic Muons (μ)': { cosmic: true }
-};
+// track characteristics for each isotope are loaded from JSON
 
 function pickComp(mix) {
   const r = Math.random();
@@ -442,6 +422,13 @@ const vSlider = document.getElementById('vRange');
 const rSlider = document.getElementById('rRange');
 const trailSlider = document.getElementById('trailRange');
 const isoSelect = document.getElementById('isoSelect');
+for (const name of Object.keys(ISOTOPES)) {
+  const opt = document.createElement('option');
+  opt.value = name;
+  opt.textContent = name;
+  isoSelect.appendChild(opt);
+}
+isoSelect.value = 'Ambient (α+β)';
 const toggleBtn = document.getElementById('toggleBtn');
 const clearBtn = document.getElementById('clearBtn');
 const densityBtn = document.getElementById('densityBtn');
@@ -458,8 +445,8 @@ function updateSettingsBtn() {
 }
 
 const isoActivities = {};
-for (const opt of isoSelect.options) {
-  isoActivities[opt.value] = parseFloat(rSlider.value);
+for (const name of Object.keys(ISOTOPES)) {
+  isoActivities[name] = parseFloat(rSlider.value);
 }
 isoActivities['Cosmic Muons (μ)'] = 5;
 isoSelect.addEventListener('change', () => {
