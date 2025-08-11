@@ -1,0 +1,21 @@
+{
+  "Ambient (α+β)": {
+    "mix": [
+      { "type": "alpha", "frac": 0.30, "speed": 2.2, "life": 3.5, "size": 26, "bright": 1.05, "qScale": 1.0 },
+      { "type": "beta", "frac": 0.70, "speed": 7.0, "life": 7.0, "size": 10, "bright": 0.65, "qScale": 1.0 }
+    ]
+  },
+  "Am-241 (α)": { "mix": [{ "type": "alpha", "frac": 1.0, "speed": 2.1, "life": 3.8, "size": 28, "bright": 1.15, "qScale": 0.8 }] },
+  "Po-210 (α)": { "mix": [{ "type": "alpha", "frac": 1.0, "speed": 2.0, "life": 3.4, "size": 28, "bright": 1.20, "qScale": 0.8 }] },
+  "Rn-222 (α)": { "mix": [{ "type": "alpha", "frac": 1.0, "speed": 2.0, "life": 3.2, "size": 26, "bright": 1.10, "qScale": 0.85 }] },
+  "Sr-90 (β−)": { "mix": [{ "type": "beta", "frac": 1.0, "speed": 6.5, "life": 7.5, "size": 9, "bright": 0.60, "qScale": 1.2 }] },
+  "Cs-137 (β−)": { "mix": [{ "type": "beta", "frac": 1.0, "speed": 7.5, "life": 8.0, "size": 10, "bright": 0.62, "qScale": 1.2 }] },
+  "Co-60 (β−)": { "mix": [{ "type": "beta", "frac": 1.0, "speed": 5.5, "life": 6.8, "size": 9, "bright": 0.60, "qScale": 1.1 }] },
+  "Th-232 chain (α+β)": {
+    "mix": [
+      { "type": "alpha", "frac": 0.60, "speed": 2.0, "life": 3.5, "size": 27, "bright": 1.10, "qScale": 0.85 },
+      { "type": "beta", "frac": 0.40, "speed": 6.8, "life": 7.5, "size": 10, "bright": 0.62, "qScale": 1.15 }
+    ]
+  },
+  "Cosmic Muons (μ)": { "cosmic": true }
+}
