@@ -2,8 +2,12 @@
 // simulation is only available in WebGL2, so we request that explicitly and
 // fail fast if the browser does not support it.
 export function createGL(canvas) {
-  const gl = canvas.getContext('webgl2', { alpha: false, antialias: true, preserveDrawingBuffer: false });
-  if (!gl) throw new Error('WebGL2 not supported');
+  // Try WebGL2 first for transform feedback support, then fall back to WebGL1
+  let gl = canvas.getContext('webgl2', { alpha: false, antialias: true, preserveDrawingBuffer: false });
+  if (gl) return gl;
+  gl = canvas.getContext('webgl', { alpha: false, antialias: true, preserveDrawingBuffer: false }) ||
+       canvas.getContext('experimental-webgl', { alpha: false, antialias: true, preserveDrawingBuffer: false });
+  if (!gl) throw new Error('WebGL not supported');
   return gl;
 }
 
