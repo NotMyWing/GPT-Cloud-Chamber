@@ -163,7 +163,7 @@ gl.bindBuffer(gl.ARRAY_BUFFER, edgeVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(EV), gl.STATIC_DRAW);
 
 // vapor volume slices
-const VAPOR_SLICES = 32;
+const VAPOR_SLICES = 48;
 const vaporVBO = gl.createBuffer();
 (function initVapor() {
   const verts = [];
@@ -675,11 +675,15 @@ function present(tex, t) {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.enable(gl.DEPTH_TEST);
+  gl.depthMask(true);
+  gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.depthMask(false);
   gl.useProgram(vaporProg);
   bindVaporAttribs(vaporProg);
   gl.uniformMatrix4fv(gl.getUniformLocation(vaporProg, 'u_viewProj'), false, getViewProj());
   gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_time'), t / 1000.0);
   gl.drawArrays(gl.TRIANGLES, 0, VAPOR_SLICES * 6);
+  gl.depthMask(true);
 
   // draw glass cube
   gl.useProgram(glassProg);
