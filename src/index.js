@@ -9,6 +9,8 @@ import glassVS from './shaders/glass.vs';
 import glassFS from './shaders/glass.fs';
 import vaporVS from './shaders/vapor.vs';
 import vaporFS from './shaders/vapor.fs';
+import edgeVS from './shaders/edge.vs';
+import edgeFS from './shaders/edge.fs';
 import updateVS from './shaders/update.vs';
 import updateFS from './shaders/update.fs';
 import { M4 } from './utils/m4';
@@ -75,6 +77,7 @@ const p2dProg = createProgram(gl, particles2dVS, particlesFS);
 // --- glass cube and vapor programs
 const glassProg = createProgram(gl, glassVS, glassFS);
 const vaporProg = createProgram(gl, vaporVS, vaporFS);
+const edgeProg = createProgram(gl, edgeVS, edgeFS);
 // --- particle update program (transform feedback, WebGL2 only)
 let updateProg = null;
 if (isWebGL2) {
@@ -137,11 +140,34 @@ const GV = [
 gl.bindBuffer(gl.ARRAY_BUFFER, glassVBO);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(GV), gl.STATIC_DRAW);
 
+// edge lines for glass cube
+const edgeVBO = gl.createBuffer();
+const EV = [
+  // bottom square
+  -b,-b,-b,  b,-b,-b,
+  b,-b,-b,  b,-b, b,
+  b,-b, b, -b,-b, b,
+  -b,-b, b, -b,-b,-b,
+  // top square
+  -b, b,-b,  b, b,-b,
+  b, b,-b,  b, b, b,
+  b, b, b, -b, b, b,
+  -b, b, b, -b, b,-b,
+  // vertical edges
+  -b,-b,-b, -b, b,-b,
+  b,-b,-b,  b, b,-b,
+  b,-b, b,  b, b, b,
+  -b,-b, b, -b, b, b
+];
+gl.bindBuffer(gl.ARRAY_BUFFER, edgeVBO);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(EV), gl.STATIC_DRAW);
+
 // vapor particles
-const VAPOR_COUNT = 300;
+const VAPOR_COUNT = 600;
 const vaporVBO = gl.createBuffer();
 const vaporPos = new Float32Array(VAPOR_COUNT * 3);
 const vaporPhase = new Float32Array(VAPOR_COUNT * 2);
+const vaporPhaseVBO = gl.createBuffer();
 function initVapor() {
   for (let i = 0; i < VAPOR_COUNT; i++) {
     vaporPos[3*i] = (Math.random()*2-1) * BOUNDS;
@@ -152,6 +178,8 @@ function initVapor() {
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
   gl.bufferData(gl.ARRAY_BUFFER, vaporPos, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vaporPhaseVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, vaporPhase, gl.STATIC_DRAW);
 }
 initVapor();
 
@@ -635,7 +663,7 @@ function renderDensity(targetFBO, texPrev, decay) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
-function present(tex) {
+function present(tex, t) {
   // draw accumulation to screen, then overlay vapor and glass cube
   gl.disable(gl.DEPTH_TEST);
   // copy to screen
@@ -656,6 +684,7 @@ function present(tex) {
   bindVaporAttribs(vaporProg);
   gl.uniformMatrix4fv(gl.getUniformLocation(vaporProg, 'u_viewProj'), false, getViewProj());
   gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_size'), 20.0);
+  gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_time'), t / 1000.0);
   gl.drawArrays(gl.POINTS, 0, VAPOR_COUNT);
 
   // draw glass cube
@@ -665,6 +694,17 @@ function present(tex) {
   gl.uniformMatrix4fv(gl.getUniformLocation(glassProg, 'u_viewProj'), false, getViewProj());
   gl.uniform3f(gl.getUniformLocation(glassProg, 'u_eye'), eye[0], eye[1], eye[2]);
   gl.drawArrays(gl.TRIANGLES, 0, 36);
+
+  // draw edge lines on top
+  gl.disable(gl.BLEND);
+  gl.useProgram(edgeProg);
+  bindEdgeAttribs(edgeProg);
+  gl.uniformMatrix4fv(gl.getUniformLocation(edgeProg, 'u_viewProj'), false, getViewProj());
+  gl.uniform3f(gl.getUniformLocation(edgeProg, 'u_color'), 0.2, 0.3, 0.35);
+  gl.lineWidth(3);
+  gl.drawArrays(gl.LINES, 0, 24);
+  gl.lineWidth(1);
+  gl.enable(gl.BLEND);
 
   gl.disable(gl.DEPTH_TEST);
 
@@ -728,15 +768,30 @@ function bindVaporAttribs(prog) {
   gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
   gl.enableVertexAttribArray(locPos);
   gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+  const locPhase = gl.getAttribLocation(prog, 'a_phase');
+  gl.bindBuffer(gl.ARRAY_BUFFER, vaporPhaseVBO);
+  gl.enableVertexAttribArray(locPhase);
+  gl.vertexAttribPointer(locPhase, 2, gl.FLOAT, false, 0, 0);
+}
+
+function bindEdgeAttribs(prog) {
+  const locPos = gl.getAttribLocation(prog, 'a_pos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, edgeVBO);
+  gl.enableVertexAttribArray(locPos);
+  gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
 }
 
 function updateVapor(dt, t) {
   const time = t / 1000;
   for (let i = 0; i < VAPOR_COUNT; i++) {
-    vaporPos[3*i] += Math.sin(time * 0.2 + vaporPhase[2*i]) * 0.2 * dt;
-    vaporPos[3*i+1] += 0.1 * dt;
-    vaporPos[3*i+2] += Math.cos(time * 0.25 + vaporPhase[2*i+1]) * 0.2 * dt;
+    vaporPos[3*i] += Math.sin(time * 0.3 + vaporPhase[2*i]) * 0.3 * dt;
+    vaporPos[3*i+1] += (0.05 + Math.sin(time * 0.5 + vaporPhase[2*i+1]) * 0.05) * dt;
+    vaporPos[3*i+2] += Math.cos(time * 0.32 + vaporPhase[2*i+1]) * 0.3 * dt;
     if (vaporPos[3*i+1] > BOUNDS) vaporPos[3*i+1] = -BOUNDS;
+    if (vaporPos[3*i] > BOUNDS) vaporPos[3*i] = -BOUNDS;
+    if (vaporPos[3*i] < -BOUNDS) vaporPos[3*i] = BOUNDS;
+    if (vaporPos[3*i+2] > BOUNDS) vaporPos[3*i+2] = -BOUNDS;
+    if (vaporPos[3*i+2] < -BOUNDS) vaporPos[3*i+2] = BOUNDS;
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, vaporVBO);
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, vaporPos);
@@ -752,7 +807,7 @@ function frame(t) {
   const decay = parseFloat(trailSlider.value);
   renderTo(fboA, texB, decay);
   if (showDensity) renderDensity(densFboA, densTexB, decay);
-  present(texA);
+  present(texA, t);
   // swap
   let tmpT = texA; texA = texB; texB = tmpT;
   let tmpF = fboA; fboA = fboB; fboB = tmpF;

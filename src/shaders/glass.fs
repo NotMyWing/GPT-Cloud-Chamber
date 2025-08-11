@@ -5,9 +5,11 @@ uniform vec3 u_eye;
 void main(){
   vec3 N = normalize(v_norm);
   vec3 V = normalize(u_eye - v_pos);
-  float fres = pow(1.0 - max(dot(V, N), 0.0), 3.0);
-  vec3 base = vec3(0.4,0.6,0.7) * 0.2;
+  float fres = pow(1.0 - max(dot(V, N), 0.0), 5.0);
+  vec3 tint = vec3(0.4, 0.6, 0.7) * 0.15;
   vec3 refl = vec3(0.9);
-  vec3 col = mix(base, refl, fres);
-  gl_FragColor = vec4(col, 0.2);
+  vec3 col = mix(tint, refl, fres);
+  float spec = pow(max(dot(reflect(-V, N), vec3(0.0,0.0,1.0)), 0.0), 16.0);
+  col += vec3(spec);
+  gl_FragColor = vec4(col, 0.15 + 0.15 * fres);
 }
