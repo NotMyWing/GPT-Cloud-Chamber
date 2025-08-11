@@ -15,7 +15,7 @@ import { M4 } from './utils/m4';
 // --- simulation parameters
 // With GPU transform feedback we can support tens of thousands of particles
 // without touching them on the CPU each frame.
-const MAX_PARTICLES = 50000;
+let MAX_PARTICLES = 50000;
 const DT_MAX = 1 / 30;
 const BOUNDS = 20;
 const DENS_RES = 256;
@@ -56,6 +56,11 @@ function pickComp(mix) {
 const canvas = document.createElement('canvas');
 document.getElementById('app').appendChild(canvas);
 const gl = createGL(canvas);
+const isWebGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+if (!isWebGL2) {
+  // CPU fallback can't handle as many particles
+  MAX_PARTICLES = 10000;
+}
 
 // --- create fullscreen quad programs
 const quadProg = createProgram(gl, quadVS, copyFS);
@@ -67,8 +72,11 @@ const p2dProg = createProgram(gl, particles2dVS, particlesFS);
 
 // --- wireframe cube program
 const lineProg = createProgram(gl, linesVS, linesFS);
-// --- particle update program (transform feedback)
-const updateProg = createProgram(gl, updateVS, updateFS, {}, ['v_state1', 'v_state2', 'v_state3']);
+// --- particle update program (transform feedback, WebGL2 only)
+let updateProg = null;
+if (isWebGL2) {
+  updateProg = createProgram(gl, updateVS, updateFS, {}, ['v_state1', 'v_state2', 'v_state3']);
+}
 
 // --- common geometry buffers
 const quadVBO = gl.createBuffer();
@@ -189,18 +197,31 @@ function getViewProj() {
 }
 
 // --- particle system ------------------------------------------------------
-// Particle state is kept entirely on the GPU using transform feedback. Each
-// particle is represented by three vec4 buffers (position/life, velocity/type
-// and size/brightness/active/qScale) that are ping‑ponged every frame.
-const stateA = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
-const stateB = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
-for (const buf of [...stateA, ...stateB]) {
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(MAX_PARTICLES * 4), gl.DYNAMIC_COPY);
-}
-let srcState = stateA;
-let dstState = stateB;
+// Particle state is stored in GPU buffers when WebGL2 is available. If WebGL2
+// is not supported we keep the state in CPU arrays and upload each frame.
+let srcState, dstState = null;
 let emitPtr = 0;
+let cpuState1, cpuState2, cpuState3;
+if (isWebGL2) {
+  const stateA = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+  const stateB = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+  for (const buf of [...stateA, ...stateB]) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(MAX_PARTICLES * 4), gl.DYNAMIC_COPY);
+  }
+  srcState = stateA;
+  dstState = stateB;
+} else {
+  srcState = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+  cpuState1 = new Float32Array(MAX_PARTICLES * 4);
+  cpuState2 = new Float32Array(MAX_PARTICLES * 4);
+  cpuState3 = new Float32Array(MAX_PARTICLES * 4);
+  const arrs = [cpuState1, cpuState2, cpuState3];
+  for (let i = 0; i < 3; i++) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[i]);
+    gl.bufferData(gl.ARRAY_BUFFER, arrs[i], gl.DYNAMIC_DRAW);
+  }
+}
 
 function spawnEvent(worldPos) {
   const isoName = isoSelect.value;
@@ -235,12 +256,25 @@ function randDir3() {
 function emitParticle(x, y, z, vx, vy, vz, life, type, size, bright, qScale) {
   const idx = emitPtr;
   emitPtr = (emitPtr + 1) % MAX_PARTICLES;
-  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
-  gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([x, y, z, life]));
-  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
-  gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([vx, vy, vz, type]));
-  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
-  gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([size, bright, 1, qScale || 1.0]));
+  if (isWebGL2) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([x, y, z, life]));
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([vx, vy, vz, type]));
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, new Float32Array([size, bright, 1, qScale || 1.0]));
+  } else {
+    const base = idx * 4;
+    cpuState1.set([x, y, z, life], base);
+    cpuState2.set([vx, vy, vz, type], base);
+    cpuState3.set([size, bright, 1, qScale || 1.0], base);
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, cpuState1.subarray(base, base + 4));
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, cpuState2.subarray(base, base + 4));
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, idx * 16, cpuState3.subarray(base, base + 4));
+  }
 }
 
 function worldFromScreen(x, y) {
@@ -306,69 +340,135 @@ clearBtn.addEventListener('click', () => { clearTargets(); });
 densityBtn.addEventListener('click', () => { showDensity = !showDensity; densityBtn.textContent = showDensity ? 'Density: On' : 'Density: Off'; if (showDensity) clearDensityTargets(); });
 let showDensity = false;
 
-function step(dt) {
-  const B = parseFloat(bSlider.value);
-  const vapor = parseFloat(vSlider.value);
-  const activity = parseFloat(rSlider.value);
+let step;
+if (isWebGL2) {
+  step = function (dt) {
+    const B = parseFloat(bSlider.value);
+    const vapor = parseFloat(vSlider.value);
+    const activity = parseFloat(rSlider.value);
 
-  const expected = activity * dt;
-  let births = Math.floor(expected);
-  if (Math.random() < (expected - births)) births++;
-  const isoName = isoSelect.value;
-  for (let i = 0; i < births; i++) {
-    if (isoName === 'Cosmic Muons (μ)') {
-      spawnEvent(null);
-    } else {
-      const margin = 2.0; const range = BOUNDS - margin;
-      const pos = [(Math.random() * 2 - 1) * range, (Math.random() * 2 - 1) * range, (Math.random() * 2 - 1) * range];
-      spawnEvent(pos);
+    const expected = activity * dt;
+    let births = Math.floor(expected);
+    if (Math.random() < (expected - births)) births++;
+    const isoName = isoSelect.value;
+    for (let i = 0; i < births; i++) {
+      if (isoName === 'Cosmic Muons (μ)') {
+        spawnEvent(null);
+      } else {
+        const margin = 2.0; const range = BOUNDS - margin;
+        const pos = [(Math.random() * 2 - 1) * range, (Math.random() * 2 - 1) * range, (Math.random() * 2 - 1) * range];
+        spawnEvent(pos);
+      }
     }
-  }
 
-  const dragBase = 0.3 + vapor * 0.8;
-  const jitter = 0.3 + vapor * 1.2;
+    const dragBase = 0.3 + vapor * 0.8;
+    const jitter = 0.3 + vapor * 1.2;
 
-  gl.useProgram(updateProg);
-  const loc1 = gl.getAttribLocation(updateProg, 'a_state1');
-  const loc2 = gl.getAttribLocation(updateProg, 'a_state2');
-  const loc3 = gl.getAttribLocation(updateProg, 'a_state3');
-  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
-  gl.enableVertexAttribArray(loc1);
-  gl.vertexAttribPointer(loc1, 4, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
-  gl.enableVertexAttribArray(loc2);
-  gl.vertexAttribPointer(loc2, 4, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
-  gl.enableVertexAttribArray(loc3);
-  gl.vertexAttribPointer(loc3, 4, gl.FLOAT, false, 0, 0);
+    gl.useProgram(updateProg);
+    const loc1 = gl.getAttribLocation(updateProg, 'a_state1');
+    const loc2 = gl.getAttribLocation(updateProg, 'a_state2');
+    const loc3 = gl.getAttribLocation(updateProg, 'a_state3');
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
+    gl.enableVertexAttribArray(loc1);
+    gl.vertexAttribPointer(loc1, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
+    gl.enableVertexAttribArray(loc2);
+    gl.vertexAttribPointer(loc2, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
+    gl.enableVertexAttribArray(loc3);
+    gl.vertexAttribPointer(loc3, 4, gl.FLOAT, false, 0, 0);
 
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, dstState[0]);
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, dstState[1]);
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, dstState[2]);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, dstState[0]);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, dstState[1]);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, dstState[2]);
 
-  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dt'), dt);
-  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_bounds'), BOUNDS);
-  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dragBase'), dragBase);
-  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_jitter'), jitter);
-  gl.uniform1f(gl.getUniformLocation(updateProg, 'u_B'), B);
+    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dt'), dt);
+    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_bounds'), BOUNDS);
+    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dragBase'), dragBase);
+    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_jitter'), jitter);
+    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_B'), B);
 
-  gl.enable(gl.RASTERIZER_DISCARD);
-  gl.beginTransformFeedback(gl.POINTS);
-  gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
-  gl.endTransformFeedback();
-  gl.disable(gl.RASTERIZER_DISCARD);
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
 
-  // Unbind transform feedback buffers so they can be used for drawing or updates.
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, null);
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, null);
+    // Unbind transform feedback buffers so they can be used for drawing or updates.
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, null);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, null);
 
-  gl.disableVertexAttribArray(loc1);
-  gl.disableVertexAttribArray(loc2);
-  gl.disableVertexAttribArray(loc3);
+    gl.disableVertexAttribArray(loc1);
+    gl.disableVertexAttribArray(loc2);
+    gl.disableVertexAttribArray(loc3);
 
-  // swap state buffers
-  let tmp = srcState; srcState = dstState; dstState = tmp;
+    // swap state buffers
+    let tmp = srcState; srcState = dstState; dstState = tmp;
+  };
+} else {
+  step = function (dt) {
+    const B = parseFloat(bSlider.value);
+    const vapor = parseFloat(vSlider.value);
+    const activity = parseFloat(rSlider.value);
+
+    const expected = activity * dt;
+    let births = Math.floor(expected);
+    if (Math.random() < (expected - births)) births++;
+    const isoName = isoSelect.value;
+    for (let i = 0; i < births; i++) {
+      if (isoName === 'Cosmic Muons (μ)') {
+        spawnEvent(null);
+      } else {
+        const margin = 2.0; const range = BOUNDS - margin;
+        const pos = [(Math.random() * 2 - 1) * range, (Math.random() * 2 - 1) * range, (Math.random() * 2 - 1) * range];
+        spawnEvent(pos);
+      }
+    }
+
+    const dragBase = 0.3 + vapor * 0.8;
+    const jitter = 0.3 + vapor * 1.2;
+
+    function rand(seed) {
+      const s = Math.sin(seed) * 43758.5453123;
+      return s - Math.floor(s);
+    }
+
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const base = i * 4;
+      let x = cpuState1[base], y = cpuState1[base + 1], z = cpuState1[base + 2], life = cpuState1[base + 3];
+      let vx = cpuState2[base], vy = cpuState2[base + 1], vz = cpuState2[base + 2], type = cpuState2[base + 3];
+      let size = cpuState3[base], bright = cpuState3[base + 1], active = cpuState3[base + 2], qScale = cpuState3[base + 3];
+      if (active > 0.5) {
+        const qBase = type > 0.5 ? 0.6 : 1.0;
+        const q = qBase * qScale;
+        const ax = q * (vz * B);
+        const az = q * (-vx * B);
+        vx += ax * dt;
+        vz += az * dt;
+        const drag = Math.exp(-dragBase * dt);
+        vx *= drag; vy *= drag; vz *= drag;
+        const seed = i;
+        vx += (rand(seed * 12.9898) * 2 - 1) * jitter * dt;
+        vy += (rand(seed * 78.233) * 2 - 1) * jitter * dt * 0.5;
+        vz += (rand(seed * 37.719) * 2 - 1) * jitter * dt;
+        x += vx * dt; y += vy * dt; z += vz * dt;
+        life -= dt;
+        active = (life > 0.0 && Math.abs(x) < BOUNDS && Math.abs(y) < BOUNDS && Math.abs(z) < BOUNDS) ? 1.0 : 0.0;
+        bright = bright * Math.max(0.25, life * 0.15);
+      }
+      cpuState1[base] = x; cpuState1[base + 1] = y; cpuState1[base + 2] = z; cpuState1[base + 3] = life;
+      cpuState2[base] = vx; cpuState2[base + 1] = vy; cpuState2[base + 2] = vz; cpuState2[base + 3] = type;
+      cpuState3[base] = size; cpuState3[base + 1] = bright; cpuState3[base + 2] = active; cpuState3[base + 3] = qScale;
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[0]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, cpuState1);
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[1]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, cpuState2);
+    gl.bindBuffer(gl.ARRAY_BUFFER, srcState[2]);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, cpuState3);
+  };
 }
 
 function renderTo(targetFBO, texPrev, decay) {
