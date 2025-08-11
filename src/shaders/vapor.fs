@@ -1,6 +1,8 @@
 precision highp float;
 varying vec3 v_pos;
 uniform float u_time;
+uniform sampler2D u_dens;
+uniform float u_bounds;
 
 float hash(vec3 p){
   return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453123);
@@ -36,6 +38,8 @@ float fbm(vec3 p){
 void main(){
   vec3 p = v_pos * 0.1 + vec3(0.0, u_time * 0.02, 0.0);
   float d = fbm(p);
-  float alpha = smoothstep(0.6, 0.9, d) * 0.025;
+  vec2 uv = v_pos.xz / (2.0 * u_bounds) + 0.5;
+  float trail = texture2D(u_dens, uv).r;
+  float alpha = smoothstep(0.6, 0.9, d) * 0.025 + trail * 0.3;
   gl_FragColor = vec4(vec3(1.0), alpha);
 }

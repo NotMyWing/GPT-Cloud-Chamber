@@ -600,7 +600,7 @@ if (isWebGL2) {
   };
 }
 
-function renderTo(targetFBO, texPrev, decay) {
+function renderTo(targetFBO, texPrev, decay, time) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, targetFBO);
   gl.viewport(0, 0, W, H);
 
@@ -622,12 +622,13 @@ function renderTo(targetFBO, texPrev, decay) {
   bindParticlesAttribs(pProg, srcState);
   gl.uniformMatrix4fv(gl.getUniformLocation(pProg, 'u_viewProj'), false, getViewProj());
   gl.uniform1f(gl.getUniformLocation(pProg, 'u_dpr'), DPR);
+  gl.uniform1f(gl.getUniformLocation(pProg, 'u_time'), time);
   gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
-function renderDensity(targetFBO, texPrev, decay) {
+function renderDensity(targetFBO, texPrev, decay, time) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, targetFBO);
   gl.viewport(0, 0, DENS_RES, DENS_RES);
 
@@ -647,6 +648,7 @@ function renderDensity(targetFBO, texPrev, decay) {
   bindParticlesAttribs(p2dProg, srcState);
   gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_bounds'), BOUNDS);
   gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_dpr'), DPR);
+  gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_time'), time);
   gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -676,6 +678,10 @@ function present(tex, t) {
   bindVaporAttribs(vaporProg);
   gl.uniformMatrix4fv(gl.getUniformLocation(vaporProg, 'u_viewProj'), false, getViewProj());
   gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_time'), t / 1000.0);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, densTexA);
+  gl.uniform1i(gl.getUniformLocation(vaporProg, 'u_dens'), 0);
+  gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_bounds'), BOUNDS);
   gl.drawArrays(gl.TRIANGLES, 0, VAPOR_SLICES * 6);
   gl.depthMask(true);
 
@@ -784,16 +790,15 @@ function frame(t) {
   if (!userPanned) camYaw += dt * 0.1;
   if (!paused) step(dt);
   const decay = parseFloat(trailSlider.value);
-  renderTo(fboA, texB, decay);
-  if (showDensity) renderDensity(densFboA, densTexB, decay);
+  const time = t / 1000.0;
+  renderTo(fboA, texB, decay, time);
+  renderDensity(densFboA, densTexB, decay, time);
   present(texA, t);
   // swap
   let tmpT = texA; texA = texB; texB = tmpT;
   let tmpF = fboA; fboA = fboB; fboB = tmpF;
-  if (showDensity) {
-    tmpT = densTexA; densTexA = densTexB; densTexB = tmpT;
-    tmpF = densFboA; densFboA = densFboB; densFboB = tmpF;
-  }
+  tmpT = densTexA; densTexA = densTexB; densTexB = tmpT;
+  tmpF = densFboA; densFboA = densFboB; densFboB = tmpF;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
