@@ -7,58 +7,59 @@
   <style>
     html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; color:#ccc; font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app, canvas { width:100%; height:100%; display:block; }
-    .hud { position:fixed; top:12px; left:12px; right:12px; display:flex; gap:12px; align-items:center; pointer-events:none; }
-    .panel { pointer-events:auto; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px 12px; backdrop-filter: blur(6px); }
+    canvas { touch-action:none; }
+    .panel { background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px 12px; backdrop-filter: blur(6px); }
+    .btn { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); border-radius:10px; padding:8px 12px; cursor:pointer; user-select:none; }
+    .settings-btn { position:fixed; top:12px; left:12px; z-index:10; }
+    .sidebar { position:fixed; top:0; left:0; bottom:0; width:280px; max-width:90%; transform:translateX(-100%); transition:transform 0.3s ease; overflow-y:auto; pointer-events:none; }
+    .sidebar.open { transform:translateX(0); pointer-events:auto; }
     .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .sidebar .row { flex-direction:column; align-items:stretch; }
     .row label { white-space:nowrap; }
-    .row input[type=range] { width:180px; }
+    .row input[type=range] { width:100%; }
     select { background:#111; color:#ddd; border:1px solid #444; border-radius:8px; padding:6px 8px; }
-    .spacer { flex:1; }
-    .btn { pointer-events:auto; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); border-radius:10px; padding:8px 12px; cursor:pointer; user-select:none; }
     .tip { opacity:0.8; font-size:12px; }
     .controls h2 { margin:0 0 8px; font-size:16px; }
-    .about { max-width:320px; }
+    .about { position:fixed; bottom:12px; right:12px; max-width:320px; }
     .about a { color:#8cf; }
   </style>
 </head>
 <body>
   <div id="app"></div>
-  <div class="hud">
-    <div class="panel controls">
-      <h2>Simulation Settings</h2>
-      <div class="row">
-        <label for="bRange">B-field</label>
-        <input id="bRange" type="range" min="-2" max="2" step="0.01" value="0.6">
-        <label for="vRange">Vapor</label>
-        <input id="vRange" type="range" min="0" max="1" step="0.005" value="0.35">
-        <label for="rRange">Activity</label>
-        <input id="rRange" type="range" min="0" max="400" step="1" value="160">
-        <label for="trailRange">Trail</label>
-        <input id="trailRange" type="range" min="0.80" max="0.999" step="0.001" value="0.965">
-        <label for="isoSelect">Isotope</label>
-        <select id="isoSelect">
-          <option>Ambient (α+β)</option>
-          <option>Am-241 (α)</option>
-          <option>Po-210 (α)</option>
-          <option>Rn-222 (α)</option>
-          <option>Sr-90 (β−)</option>
-          <option>Cs-137 (β−)</option>
-          <option>Co-60 (β−)</option>
-          <option>Th-232 chain (α+β)</option>
-          <option>Cosmic Muons (μ)</option>
-        </select>
-        <div class="spacer"></div>
-        <div id="toggleBtn" class="btn">Pause</div>
-        <div id="clearBtn" class="btn">Clear</div>
-        <div id="densityBtn" class="btn">Density: Off</div>
-      </div>
-      <div class="row tip">
-        Click to inject a decay. Drag = orbit. Wheel = zoom. Isotope controls α vs β track style (stylized).
-      </div>
+  <div id="settingsBtn" class="btn settings-btn">⚙️ Settings</div>
+  <div id="settingsPanel" class="panel sidebar controls">
+    <h2>Simulation Settings</h2>
+    <div class="row">
+      <label for="bRange">B-field</label>
+      <input id="bRange" type="range" min="-2" max="2" step="0.01" value="0.6">
+      <label for="vRange">Vapor</label>
+      <input id="vRange" type="range" min="0" max="1" step="0.005" value="0.35">
+      <label for="rRange">Activity</label>
+      <input id="rRange" type="range" min="0" max="400" step="1" value="160">
+      <label for="trailRange">Trail</label>
+      <input id="trailRange" type="range" min="0.80" max="0.999" step="0.001" value="0.965">
+      <label for="isoSelect">Isotope</label>
+      <select id="isoSelect">
+        <option>Ambient (α+β)</option>
+        <option>Am-241 (α)</option>
+        <option>Po-210 (α)</option>
+        <option>Rn-222 (α)</option>
+        <option>Sr-90 (β−)</option>
+        <option>Cs-137 (β−)</option>
+        <option>Co-60 (β−)</option>
+        <option>Th-232 chain (α+β)</option>
+        <option>Cosmic Muons (μ)</option>
+      </select>
+      <div id="toggleBtn" class="btn">Pause</div>
+      <div id="clearBtn" class="btn">Clear</div>
+      <div id="densityBtn" class="btn">Density: Off</div>
     </div>
-    <div class="panel about">
-      <p><strong>WebGL Cloud Chamber</strong> – a GPU particle demo built as a test of GPT-5 capabilities. Learn more about <a href="https://en.wikipedia.org/wiki/Cloud_chamber">cloud chambers</a> or browse the <a href="https://github.com/NotMyWing/GPT-Cloud-Chamber">source on GitHub</a>.</p>
+    <div class="row tip">
+      Click to inject a decay. Drag = orbit. Wheel = zoom. Isotope controls α vs β track style (stylized).
     </div>
+  </div>
+  <div class="panel about">
+    <p><strong>WebGL Cloud Chamber</strong> – a GPU particle demo built as a test of GPT-5 capabilities. Learn more about <a href="https://en.wikipedia.org/wiki/Cloud_chamber">cloud chambers</a> or browse the <a href="https://github.com/NotMyWing/GPT-Cloud-Chamber">source on GitHub</a>.</p>
   </div>
   <script src="./bundle.js"></script>
 </body>

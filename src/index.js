@@ -181,6 +181,25 @@ window.addEventListener('wheel', e => {
   camDist = Math.max(4, Math.min(40, camDist + Math.sign(e.deltaY)));
 });
 
+// touch controls
+canvas.addEventListener('touchstart', e => {
+  isDragging = true;
+  const t = e.touches[0];
+  lastX = t.clientX; lastY = t.clientY;
+}, { passive: false });
+window.addEventListener('touchend', () => { isDragging = false; });
+window.addEventListener('touchcancel', () => { isDragging = false; });
+window.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  const t = e.touches[0];
+  const dx = (t.clientX - lastX) / window.innerWidth;
+  const dy = (t.clientY - lastY) / window.innerHeight;
+  camYaw += dx * 3.0;
+  camPitch = Math.max(-1.2, Math.min(1.2, camPitch + dy * 3.0));
+  lastX = t.clientX; lastY = t.clientY;
+  e.preventDefault();
+}, { passive: false });
+
 function getViewProj() {
   const eye = [
     camDist * Math.cos(camPitch) * Math.cos(camYaw),
@@ -321,6 +340,8 @@ const isoSelect = document.getElementById('isoSelect');
 const toggleBtn = document.getElementById('toggleBtn');
 const clearBtn = document.getElementById('clearBtn');
 const densityBtn = document.getElementById('densityBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
 
 const isoActivities = {};
 for (const opt of isoSelect.options) {
@@ -338,6 +359,7 @@ let paused = false;
 toggleBtn.addEventListener('click', () => { paused = !paused; toggleBtn.textContent = paused ? 'Resume' : 'Pause'; });
 clearBtn.addEventListener('click', () => { clearTargets(); });
 densityBtn.addEventListener('click', () => { showDensity = !showDensity; densityBtn.textContent = showDensity ? 'Density: On' : 'Density: Off'; if (showDensity) clearDensityTargets(); });
+settingsBtn.addEventListener('click', () => { settingsPanel.classList.toggle('open'); });
 let showDensity = false;
 
 let step;
