@@ -9,5 +9,6 @@ void main(){
   col += texture2D(u_prev, v_uv + u_texel * vec2(-1.0, 0.0)) * 0.15;
   col += texture2D(u_prev, v_uv + u_texel * vec2(0.0, 1.0)) * 0.15;
   col += texture2D(u_prev, v_uv + u_texel * vec2(0.0, -1.0)) * 0.15;
-  gl_FragColor = vec4(col.rgb * u_decay, 1.0);
+  float decay = min(u_decay + 0.05, 0.995);
+  gl_FragColor = vec4(col.rgb * decay, 1.0);
 }
