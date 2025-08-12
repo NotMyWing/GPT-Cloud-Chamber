@@ -18,7 +18,7 @@ void main(){
   vec3 betaCol = vec3(0.3, 0.7, 1.0);
   vec3 alphaCol = vec3(1.0, 0.5, 0.1);
   vec3 col = mix(betaCol, alphaCol, v_type);
-  float brightness = v_bright * core * density * (1.8 + sparkle * 0.8);
+  float brightness = v_bright * core * (1.2 + sparkle * 0.8);
   float alpha = density * glow * (1.4 + sparkle * 0.5);
-  gl_FragColor = vec4(col * brightness, alpha);
+  gl_FragColor = vec4(col * brightness * density, alpha);
 }

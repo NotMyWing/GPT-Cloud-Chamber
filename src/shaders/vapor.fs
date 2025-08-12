@@ -40,6 +40,7 @@ void main(){
   float d = fbm(p);
   vec2 uv = v_pos.xz / (2.0 * u_bounds) + 0.5;
   float trail = texture2D(u_dens, uv).r;
-  float alpha = smoothstep(0.6, 0.9, d) * 0.025 + trail * 0.3;
+  trail = pow(trail, 0.5) * exp(-abs(v_pos.y) * 0.1);
+  float alpha = smoothstep(0.6, 0.9, d) * 0.025 + trail * 0.1;
   gl_FragColor = vec4(vec3(1.0), alpha);
 }
