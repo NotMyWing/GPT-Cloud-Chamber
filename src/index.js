@@ -161,6 +161,14 @@ const vaporVBO = gl.createBuffer();
 // accumulation buffers
 let texA, texB, fboA, fboB, W = 2, H = 2, DPR = 1;
 let densTexA, densTexB, densFboA, densFboB;
+let renderScale = 1, autoRender = true;
+try {
+  const saved = JSON.parse(localStorage.getItem('renderSettings'));
+  if (saved) {
+    if (typeof saved.scale === 'number') renderScale = saved.scale;
+    if (typeof saved.auto === 'boolean') autoRender = saved.auto;
+  }
+} catch (e) { /* ignore */ }
 function createTargets(w, h) {
   texA && gl.deleteTexture(texA);
   texB && gl.deleteTexture(texB);
@@ -203,7 +211,8 @@ function clearDensityTargets() {
 }
 
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
+  const base = Math.min(2, window.devicePixelRatio || 1);
+  DPR = Math.min(2, base * renderScale);
   const w = Math.max(2, Math.floor(window.innerWidth * DPR));
   const h = Math.max(2, Math.floor(window.innerHeight * DPR));
   if (w === W && h === H) return;
@@ -434,6 +443,52 @@ const clearBtn = document.getElementById('clearBtn');
 const densityBtn = document.getElementById('densityBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
+const simTabBtn = document.getElementById('simTabBtn');
+const renderTabBtn = document.getElementById('renderTabBtn');
+const simTab = document.getElementById('simTab');
+const renderTab = document.getElementById('renderTab');
+simTabBtn.addEventListener('click', () => {
+  simTabBtn.classList.add('active');
+  renderTabBtn.classList.remove('active');
+  simTab.classList.add('active');
+  renderTab.classList.remove('active');
+});
+renderTabBtn.addEventListener('click', () => {
+  renderTabBtn.classList.add('active');
+  simTabBtn.classList.remove('active');
+  renderTab.classList.add('active');
+  simTab.classList.remove('active');
+});
+const scaleSlider = document.getElementById('scaleRange');
+const autoCheck = document.getElementById('autoCheck');
+const resetRenderBtn = document.getElementById('resetRenderBtn');
+function saveRenderSettings() {
+  try {
+    localStorage.setItem('renderSettings', JSON.stringify({ scale: renderScale, auto: autoRender }));
+  } catch (e) { /* ignore */ }
+}
+scaleSlider.value = renderScale;
+autoCheck.checked = autoRender;
+scaleSlider.disabled = autoRender;
+scaleSlider.addEventListener('input', () => {
+  renderScale = parseFloat(scaleSlider.value);
+  resize();
+  saveRenderSettings();
+});
+autoCheck.addEventListener('change', () => {
+  autoRender = autoCheck.checked;
+  scaleSlider.disabled = autoRender;
+  saveRenderSettings();
+});
+resetRenderBtn.addEventListener('click', () => {
+  renderScale = 1;
+  autoRender = true;
+  scaleSlider.value = renderScale;
+  autoCheck.checked = autoRender;
+  scaleSlider.disabled = autoRender;
+  resize();
+  saveRenderSettings();
+});
 
 function updateSettingsBtn() {
   if (settingsPanel.classList.contains('open')) {
@@ -774,9 +829,29 @@ function bindEdgeAttribs(prog) {
 
 // main loop
 let lastT = performance.now();
+let fpsFrames = 0, fpsTime = 0;
 function frame(t) {
   const dt = Math.min(DT_MAX, (t - lastT) / 1000);
   lastT = t;
+  fpsFrames++;
+  fpsTime += dt;
+  if (fpsTime >= 1) {
+    const fps = fpsFrames / fpsTime;
+    fpsFrames = 0; fpsTime = 0;
+    if (autoRender) {
+      if (fps < 55 && renderScale > 0.5) {
+        renderScale = Math.max(0.5, renderScale - 0.1);
+        scaleSlider.value = renderScale;
+        resize();
+        saveRenderSettings();
+      } else if (fps > 58 && renderScale < 1) {
+        renderScale = Math.min(1, renderScale + 0.1);
+        scaleSlider.value = renderScale;
+        resize();
+        saveRenderSettings();
+      }
+    }
+  }
   if (!userPanned) camYaw += dt * 0.1;
   if (!paused) step(dt);
   const decay = parseFloat(trailSlider.value);
