@@ -58,10 +58,48 @@ const p2dProg = createProgram(gl, particles2dVS, particlesFS);
 const glassProg = createProgram(gl, glassVS, glassFS);
 const vaporProg = createProgram(gl, vaporVS, vaporFS);
 const edgeProg = createProgram(gl, edgeVS, edgeFS);
+
+// cache uniform locations to avoid repeated lookups during rendering
+const quadUniforms = {
+  tex: gl.getUniformLocation(quadProg, 'u_tex'),
+};
+const decayUniforms = {
+  prev: gl.getUniformLocation(decayProg, 'u_prev'),
+  decay: gl.getUniformLocation(decayProg, 'u_decay'),
+  texel: gl.getUniformLocation(decayProg, 'u_texel'),
+};
+const pUniforms = {
+  viewProj: gl.getUniformLocation(pProg, 'u_viewProj'),
+  dpr: gl.getUniformLocation(pProg, 'u_dpr'),
+};
+const p2dUniforms = {
+  bounds: gl.getUniformLocation(p2dProg, 'u_bounds'),
+  dpr: gl.getUniformLocation(p2dProg, 'u_dpr'),
+};
+const glassUniforms = {
+  viewProj: gl.getUniformLocation(glassProg, 'u_viewProj'),
+  eye: gl.getUniformLocation(glassProg, 'u_eye'),
+};
+const vaporUniforms = {
+  viewProj: gl.getUniformLocation(vaporProg, 'u_viewProj'),
+  time: gl.getUniformLocation(vaporProg, 'u_time'),
+};
+const edgeUniforms = {
+  viewProj: gl.getUniformLocation(edgeProg, 'u_viewProj'),
+  color: gl.getUniformLocation(edgeProg, 'u_color'),
+};
 // --- particle update program (transform feedback, WebGL2 only)
 let updateProg = null;
+let updateUniforms = null;
 if (isWebGL2) {
   updateProg = createProgram(gl, updateVS, updateFS, {}, ['v_state1', 'v_state2', 'v_state3']);
+  updateUniforms = {
+    dt: gl.getUniformLocation(updateProg, 'u_dt'),
+    bounds: gl.getUniformLocation(updateProg, 'u_bounds'),
+    dragBase: gl.getUniformLocation(updateProg, 'u_dragBase'),
+    jitter: gl.getUniformLocation(updateProg, 'u_jitter'),
+    B: gl.getUniformLocation(updateProg, 'u_B'),
+  };
 }
 
 // --- common geometry buffers
@@ -221,6 +259,7 @@ function resize() {
   canvas.style.width = '100%'; canvas.style.height = '100%';
   gl.viewport(0, 0, w, h);
   createTargets(w, h);
+  updateViewProj();
 }
 window.addEventListener('resize', resize);
 resize();
@@ -290,15 +329,20 @@ window.addEventListener('touchmove', e => {
   }
 }, { passive: false });
 
-function getViewProj() {
+const viewProj = new Float32Array(16);
+const camPos = [0, 0, 0];
+function updateViewProj() {
   const eye = getCameraPos();
+  camPos[0] = eye[0]; camPos[1] = eye[1]; camPos[2] = eye[2];
   const center = [0, 0, 0], up = [0, 1, 0];
-  const view = new Float32Array(16), proj = new Float32Array(16), vp = new Float32Array(16);
-  M4.lookAt(view, eye, center, up);
+  const view = new Float32Array(16), proj = new Float32Array(16);
+  M4.lookAt(view, camPos, center, up);
   const fov = 60 * Math.PI / 180;
   M4.perspective(proj, fov, W / H, 0.1, 400);
-  M4.multiply(vp, proj, view);
-  return vp;
+  M4.multiply(viewProj, proj, view);
+}
+function getViewProj() {
+  return viewProj;
 }
 
 function getCameraPos() {
@@ -562,11 +606,11 @@ if (isWebGL2) {
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, dstState[1]);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, dstState[2]);
 
-    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dt'), dt);
-    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_bounds'), BOUNDS);
-    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_dragBase'), dragBase);
-    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_jitter'), jitter);
-    gl.uniform1f(gl.getUniformLocation(updateProg, 'u_B'), B);
+    gl.uniform1f(updateUniforms.dt, dt);
+    gl.uniform1f(updateUniforms.bounds, BOUNDS);
+    gl.uniform1f(updateUniforms.dragBase, dragBase);
+    gl.uniform1f(updateUniforms.jitter, jitter);
+    gl.uniform1f(updateUniforms.B, B);
 
     gl.enable(gl.RASTERIZER_DISCARD);
     gl.beginTransformFeedback(gl.POINTS);
@@ -661,9 +705,9 @@ function renderTo(targetFBO, texPrev, decay) {
   bindQuadAttribs(decayProg);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texPrev);
-  gl.uniform1i(gl.getUniformLocation(decayProg, 'u_prev'), 0);
-  gl.uniform1f(gl.getUniformLocation(decayProg, 'u_decay'), decay);
-  gl.uniform2f(gl.getUniformLocation(decayProg, 'u_texel'), 1 / W, 1 / H);
+  gl.uniform1i(decayUniforms.prev, 0);
+  gl.uniform1f(decayUniforms.decay, decay);
+  gl.uniform2f(decayUniforms.texel, 1 / W, 1 / H);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // 2) draw particles (ADDITIVE)
@@ -671,8 +715,8 @@ function renderTo(targetFBO, texPrev, decay) {
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.useProgram(pProg);
   bindParticlesAttribs(pProg, srcState);
-  gl.uniformMatrix4fv(gl.getUniformLocation(pProg, 'u_viewProj'), false, getViewProj());
-  gl.uniform1f(gl.getUniformLocation(pProg, 'u_dpr'), DPR);
+  gl.uniformMatrix4fv(pUniforms.viewProj, false, getViewProj());
+  gl.uniform1f(pUniforms.dpr, DPR);
   gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -687,17 +731,17 @@ function renderDensity(targetFBO, texPrev, decay) {
   bindQuadAttribs(decayProg);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texPrev);
-  gl.uniform1i(gl.getUniformLocation(decayProg, 'u_prev'), 0);
-  gl.uniform1f(gl.getUniformLocation(decayProg, 'u_decay'), decay);
-  gl.uniform2f(gl.getUniformLocation(decayProg, 'u_texel'), 1 / DENS_RES, 1 / DENS_RES);
+  gl.uniform1i(decayUniforms.prev, 0);
+  gl.uniform1f(decayUniforms.decay, decay);
+  gl.uniform2f(decayUniforms.texel, 1 / DENS_RES, 1 / DENS_RES);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.useProgram(p2dProg);
   bindParticlesAttribs(p2dProg, srcState);
-  gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_bounds'), BOUNDS);
-  gl.uniform1f(gl.getUniformLocation(p2dProg, 'u_dpr'), DPR);
+  gl.uniform1f(p2dUniforms.bounds, BOUNDS);
+  gl.uniform1f(p2dUniforms.dpr, DPR);
   gl.drawArrays(gl.POINTS, 0, MAX_PARTICLES);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -713,7 +757,7 @@ function present(tex, t) {
   bindQuadAttribs(quadProg);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.uniform1i(gl.getUniformLocation(quadProg, 'u_tex'), 0);
+  gl.uniform1i(quadUniforms.tex, 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // draw vapor
@@ -725,17 +769,16 @@ function present(tex, t) {
   gl.depthMask(false);
   gl.useProgram(vaporProg);
   bindVaporAttribs(vaporProg);
-  gl.uniformMatrix4fv(gl.getUniformLocation(vaporProg, 'u_viewProj'), false, getViewProj());
-  gl.uniform1f(gl.getUniformLocation(vaporProg, 'u_time'), t / 1000.0);
+  gl.uniformMatrix4fv(vaporUniforms.viewProj, false, getViewProj());
+  gl.uniform1f(vaporUniforms.time, t / 1000.0);
   gl.drawArrays(gl.TRIANGLES, 0, VAPOR_SLICES * 6);
   gl.depthMask(true);
 
   // draw glass cube
   gl.useProgram(glassProg);
   bindGlassAttribs(glassProg);
-  const eye = getCameraPos();
-  gl.uniformMatrix4fv(gl.getUniformLocation(glassProg, 'u_viewProj'), false, getViewProj());
-  gl.uniform3f(gl.getUniformLocation(glassProg, 'u_eye'), eye[0], eye[1], eye[2]);
+  gl.uniformMatrix4fv(glassUniforms.viewProj, false, getViewProj());
+  gl.uniform3f(glassUniforms.eye, camPos[0], camPos[1], camPos[2]);
   gl.depthMask(false);
   gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.FRONT);
@@ -749,8 +792,8 @@ function present(tex, t) {
   gl.disable(gl.BLEND);
   gl.useProgram(edgeProg);
   bindEdgeAttribs(edgeProg);
-  gl.uniformMatrix4fv(gl.getUniformLocation(edgeProg, 'u_viewProj'), false, getViewProj());
-  gl.uniform3f(gl.getUniformLocation(edgeProg, 'u_color'), 0.4, 0.6, 0.7);
+  gl.uniformMatrix4fv(edgeUniforms.viewProj, false, getViewProj());
+  gl.uniform3f(edgeUniforms.color, 0.4, 0.6, 0.7);
   gl.lineWidth(3);
   gl.drawArrays(gl.LINES, 0, 24);
   gl.lineWidth(1);
@@ -766,7 +809,7 @@ function present(tex, t) {
     bindQuadAttribs(quadProg);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, densTexA);
-    gl.uniform1i(gl.getUniformLocation(quadProg, 'u_tex'), 0);
+    gl.uniform1i(quadUniforms.tex, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.viewport(0, 0, W, H);
   }
@@ -853,6 +896,7 @@ function frame(t) {
     }
   }
   if (!userPanned) camYaw += dt * 0.1;
+  updateViewProj();
   if (!paused) step(dt);
   const decay = parseFloat(trailSlider.value);
   renderTo(fboA, texB, decay);
